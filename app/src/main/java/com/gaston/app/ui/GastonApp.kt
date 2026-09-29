@@ -59,25 +59,45 @@ private fun playUiSound(context: Context, resourceId: Int) {
 }
 
 private val dateFormat = DateTimeFormatter.ofPattern("EEEE d 'de' MMMM", Spanish)
-private val icons = listOf(
-    "🛒", "🏠", "💡", "📺", "❤️", "🚌", "☕", "🎁",
-    "🍕", "🍔", "🥖", "📶", "💧", "🚗", "🚕", "✈️",
-    "💊", "🏋️", "✂️", "👗", "🎬", "🎮", "🐶", "👶",
-    "💼", "🎓", "🏦", "🔧", "📦", "❓"
+private data class ExpenseCategory(val name: String, val icon: String)
+private val expenseCategories = listOf(
+    ExpenseCategory("Compra", "🛒"),
+    ExpenseCategory("Supermercado", "🛍️"),
+    ExpenseCategory("Hogar", "🏠"),
+    ExpenseCategory("Luz", "💡"),
+    ExpenseCategory("Suscripciones", "📺"),
+    ExpenseCategory("Salud", "❤️"),
+    ExpenseCategory("Transporte", "🚌"),
+    ExpenseCategory("Café", "☕"),
+    ExpenseCategory("Regalos", "🎁"),
+    ExpenseCategory("Comida", "🍕"),
+    ExpenseCategory("Comida rápida", "🍔"),
+    ExpenseCategory("Panadería", "🥖"),
+    ExpenseCategory("Internet", "📶"),
+    ExpenseCategory("Agua", "💧"),
+    ExpenseCategory("Gasolina", "⛽"),
+    ExpenseCategory("Coche", "🚗"),
+    ExpenseCategory("Taxi", "🚕"),
+    ExpenseCategory("Viajes", "✈️"),
+    ExpenseCategory("Farmacia", "💊"),
+    ExpenseCategory("Deporte", "🏋️"),
+    ExpenseCategory("Peluquería", "✂️"),
+    ExpenseCategory("Ropa", "👗"),
+    ExpenseCategory("Ocio", "🎬"),
+    ExpenseCategory("Videojuegos", "🎮"),
+    ExpenseCategory("Mascotas", "🐶"),
+    ExpenseCategory("Bebé", "👶"),
+    ExpenseCategory("Trabajo", "💼"),
+    ExpenseCategory("Estudios", "🎓"),
+    ExpenseCategory("Banco", "🏦"),
+    ExpenseCategory("Reparaciones", "🔧"),
+    ExpenseCategory("Envíos", "📦"),
+    ExpenseCategory("Otros", "❓")
 )
 
 private fun cycleProgress(remaining: Long, initial: Long): Float {
     if (initial <= 0) return 0f
     return (remaining.toFloat() / initial.toFloat()).coerceIn(0f, 1f)
-}
-
-@Composable
-private fun SacoGraphic(
-    progress: Float,
-    isNegative: Boolean,
-    modifier: Modifier = Modifier
-) {
-    GemBag(progress, isNegative, modifier)
 }
 
 @Composable
@@ -405,11 +425,16 @@ private fun BagScreen(data: BagData, today: LocalDate, busy: Boolean, back: () -
                     Text(budget?.let { euros(it.today) } ?: "Actualizando…", style = MaterialTheme.typography.displaySmall,
                         color = if ((budget?.today ?: 0) < 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
                 }
-                SacoGraphic(
-                    progress = progress,
-                    isNegative = remaining < 0,
-                    modifier = Modifier.padding(start = 12.dp).size(90.dp)
-                )
+                Row(
+                    Modifier.padding(start = 12.dp).size(width = 112.dp, height = 76.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy((-6).dp)
+                ) {
+                    Image(painterResource(R.drawable.bag), contentDescription = "Saco",
+                        contentScale = ContentScale.Fit, modifier = Modifier.size(58.dp))
+                    Image(painterResource(R.drawable.coins), contentDescription = "Montaña de monedas",
+                        contentScale = ContentScale.Fit, modifier = Modifier.size(58.dp))
+                }
             }
             
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -535,10 +560,11 @@ private fun AmountField(value: String, change: (String) -> Unit, label: String) 
 @Composable
 private fun IconPicker(selected: String, change: (String) -> Unit) {
     val scrollState = rememberScrollState()
-    val chunkSize = (icons.size + 2) / 3
+    val chunkSize = (expenseCategories.size + 2) / 3
+    val selectedCategory = expenseCategories.firstOrNull { it.icon == selected }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Icono seleccionado:", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Concepto: ${selectedCategory?.name ?: "Personalizado"}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Surface(
                 shape = RoundedCornerShape(8.dp),
                 color = MaterialTheme.colorScheme.primaryContainer,
@@ -550,27 +576,29 @@ private fun IconPicker(selected: String, change: (String) -> Unit) {
             }
         }
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            icons.chunked(chunkSize).forEach { row ->
+            expenseCategories.chunked(chunkSize).forEach { row ->
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .horizontalScroll(scrollState),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    row.forEach { icon ->
-                        val isSelected = selected == icon
+                    row.forEach { category ->
+                        val isSelected = selected == category.icon
                         Surface(
-                            onClick = { change(icon) },
+                            onClick = { change(category.icon) },
                             shape = RoundedCornerShape(10.dp),
                             color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
                             border = BorderStroke(
                                 if (isSelected) 2.dp else 1.dp,
                                 if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
                             ),
-                            modifier = Modifier.size(width = 48.dp, height = 40.dp)
+                            modifier = Modifier.size(width = 88.dp, height = 60.dp)
                         ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Text(icon, style = MaterialTheme.typography.titleMedium)
+                            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                                Text(category.icon, style = MaterialTheme.typography.titleMedium)
+                                Text(category.name, style = MaterialTheme.typography.labelSmall, maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                             }
                         }
                     }
@@ -584,12 +612,32 @@ private fun ExpenseDialog(busy: Boolean, dismiss: () -> Unit, existing: Expense?
     var name by rememberSaveable(existing?.id) { mutableStateOf(existing?.name.orEmpty()) }
     var amount by rememberSaveable(existing?.id) { mutableStateOf(existing?.cents?.let { java.math.BigDecimal.valueOf(it, 2).toPlainString() }.orEmpty()) }
     var icon by rememberSaveable(existing?.id) { mutableStateOf(existing?.icon?.ifBlank { "❓" } ?: "❓") }
+    var showSuggestions by rememberSaveable(existing?.id) { mutableStateOf(false) }
+    val matchingSuggestions = expenseCategories.filter {
+        name.isNotBlank() && it.name.startsWith(name.trim(), ignoreCase = true) && !it.name.equals(name.trim(), ignoreCase = true)
+    }.take(5)
     val cents = Money.parse(amount)
     AlertDialog(onDismissRequest = { if (!busy) dismiss() }, title = { Text(if (existing == null) "Registrar gasto" else "Editar gasto") }, text = {
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             AmountField(amount, { amount = it }, "Importe (€)")
-            OutlinedTextField(name, { name = it }, label = { Text("¿En qué lo has gastado?") }, singleLine = true)
-            IconPicker(icon) { icon = it }
+            OutlinedTextField(name, { name = it; showSuggestions = true }, label = { Text("¿En qué lo has gastado?") }, singleLine = true)
+            if (showSuggestions && matchingSuggestions.isNotEmpty()) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Sugerencias", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        matchingSuggestions.forEach { category ->
+                            AssistChip(
+                                onClick = { name = category.name; icon = category.icon; showSuggestions = false },
+                                label = { Text("${category.icon} ${category.name}") }
+                            )
+                        }
+                    }
+                }
+            }
+            IconPicker(icon) {
+                icon = it
+                name = expenseCategories.firstOrNull { category -> category.icon == it }?.name ?: name
+            }
         }
     }, confirmButton = { TextButton(enabled = !busy && cents != null && cents > 0 && name.isNotBlank(), onClick = { save(name, icon, cents!!) }) { Text(if (busy) "Guardando…" else "Guardar gasto") } }, dismissButton = { TextButton(enabled = !busy, onClick = dismiss) { Text("Cancelar") } })
 }
