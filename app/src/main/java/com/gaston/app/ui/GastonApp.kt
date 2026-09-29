@@ -232,12 +232,8 @@ fun GastonApp(vm: GastonViewModel) {
                                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                     Text("TU COFRE DE AHORRO", style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onTertiaryContainer)
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Image(painterResource(R.drawable.coins), contentDescription = "Montón de monedas",
-                                            contentScale = ContentScale.Fit, modifier = Modifier.size(42.dp).padding(end = 6.dp))
-                                        Text(euros(totalReserved), style = MaterialTheme.typography.titleLarge,
-                                            fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onTertiaryContainer)
-                                    }
+                                    Text(euros(totalReserved), style = MaterialTheme.typography.titleLarge,
+                                        fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onTertiaryContainer)
                                     Text("Ver ahorro reservado", style = MaterialTheme.typography.labelMedium,
                                         color = MaterialTheme.colorScheme.onTertiaryContainer)
                                 }
@@ -276,7 +272,14 @@ fun GastonApp(vm: GastonViewModel) {
 }
 
 @Composable
-private fun Page(title: String, subtitle: String, back: (() -> Unit)? = null, onInfo: (() -> Unit)? = null, content: @Composable ColumnScope.() -> Unit) {
+private fun Page(
+    title: String,
+    subtitle: String,
+    back: (() -> Unit)? = null,
+    onInfo: (() -> Unit)? = null,
+    infoDescription: String = "¿Cómo se calcula el presupuesto?",
+    content: @Composable ColumnScope.() -> Unit
+) {
     Column(Modifier.fillMaxSize().imePadding().verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         if (back != null) TextButton(onClick = back) { Text("← Volver a la aventura") }
         Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.primary) {
@@ -287,7 +290,7 @@ private fun Page(title: String, subtitle: String, back: (() -> Unit)? = null, on
                     Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onPrimary.copy(alpha = .82f))
                 }
                 if (onInfo != null) IconButton(onClick = onInfo) {
-                    Icon(painterResource(R.drawable.ic_info), contentDescription = "¿Cómo se calcula el presupuesto?", tint = MaterialTheme.colorScheme.onPrimary)
+                    Icon(painterResource(R.drawable.ic_info), contentDescription = infoDescription, tint = MaterialTheme.colorScheme.onPrimary)
                 }
             }
         }
@@ -315,7 +318,12 @@ private fun TreasuryScreen(bags: List<BagData>, today: LocalDate) {
     val todayText = today.toString()
     val totalReserved = bags.sumOf { data -> data.cycles.filter { it.start <= todayText }.sumOf { it.saving } }
     if (showSavingsInfo) SavingsInfoDialog { showSavingsInfo = false }
-    Page("Tu cofre", "Ahorro reservado en tus sacos", onInfo = { showSavingsInfo = true }) {
+    Page(
+        "Tu cofre",
+        "Ahorro reservado en tus sacos",
+        onInfo = { showSavingsInfo = true },
+        infoDescription = "Cómo funciona la pestaña del cofre de ahorro"
+    ) {
         Section {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Image(painterResource(R.drawable.chest_open), contentDescription = "Cofre de ahorro abierto",
@@ -323,16 +331,15 @@ private fun TreasuryScreen(bags: List<BagData>, today: LocalDate) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                     Text("TOTAL RESERVADO", style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.tertiary)
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Image(painterResource(R.drawable.coins), contentDescription = "Montón de monedas",
-                            contentScale = ContentScale.Fit, modifier = Modifier.size(46.dp).padding(end = 6.dp))
-                        Text(euros(totalReserved), style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                    }
+                    Text(euros(totalReserved), style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                     Text("Suma del ahorro previsto en tus ciclos registrados", style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
+        }
+        OutlinedButton(onClick = { showSavingsInfo = true }, modifier = Modifier.fillMaxWidth()) {
+            Text("ⓘ Cómo funciona el cofre de ahorro")
         }
         Text("Ahorro por saco", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         if (bags.isEmpty()) {
@@ -348,7 +355,7 @@ private fun TreasuryScreen(bags: List<BagData>, today: LocalDate) {
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
             ) {
                 Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Image(painterResource(R.drawable.coins), contentDescription = "Montón de monedas",
+                    Image(painterResource(R.drawable.bag), contentDescription = "Saco de ${data.bag.name}",
                         contentScale = ContentScale.Fit, modifier = Modifier.size(44.dp).padding(end = 8.dp))
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                         Text(data.bag.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
@@ -369,9 +376,17 @@ private fun TreasuryScreen(bags: List<BagData>, today: LocalDate) {
 @Composable
 private fun CreatorCredit() {
     val uriHandler = LocalUriHandler.current
-    TextButton(onClick = { uriHandler.openUri("https://github.com/StefanoMazzuka/gaston") },
-        modifier = Modifier.fillMaxWidth()) {
-        Text("Stefano Mazzuka · GitHub", color = MaterialTheme.colorScheme.onSurfaceVariant)
+    val context = LocalContext.current
+    @Suppress("DEPRECATION")
+    val versionName = remember(context) {
+        context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "—"
+    }
+    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+        TextButton(onClick = { uriHandler.openUri("https://github.com/StefanoMazzuka/gaston") }) {
+            Text("Hecho por Stefano Mazzuka · GitHub", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Text("Versión $versionName", style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -379,12 +394,13 @@ private fun CreatorCredit() {
 private fun SavingsInfoDialog(dismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = dismiss,
-        title = { Text("¿Cómo crece el cofre?") },
+        title = { Text("Cómo funciona el cofre de ahorro") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Cada ciclo reserva una cantidad para el ahorro. Al terminar un ciclo, la reserva del siguiente se incorpora al total y el cofre puede seguir creciendo.")
-                Text("Ahora se suman las reservas previstas de los ciclos iniciados. La app todavía no comprueba si se cumplió una meta ni registra retiradas, así que el total no es un saldo bancario confirmado.")
-                Text("Para sumar únicamente cuando se alcance una meta, habría que añadir ese seguimiento.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Cada saco reserva una cantidad para ahorrar durante cada ciclo. Cuando termina un ciclo y se crea el siguiente, la nueva reserva se añade al total del cofre.")
+                Text("En “Ahorro por saco”, el importe grande suma las reservas de los ciclos ya iniciados. “Este ciclo” muestra cuánto se ha reservado para el ciclo actual.")
+                Text("Importante: hoy se cuentan cantidades planificadas; la app no comprueba si se alcanzó la meta ni registra retiradas. El total es una previsión de ahorro, no un saldo bancario confirmado.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         },
         confirmButton = { TextButton(onClick = dismiss) { Text("Entendido") } }
@@ -425,16 +441,8 @@ private fun BagScreen(data: BagData, today: LocalDate, busy: Boolean, back: () -
                     Text(budget?.let { euros(it.today) } ?: "Actualizando…", style = MaterialTheme.typography.displaySmall,
                         color = if ((budget?.today ?: 0) < 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
                 }
-                Row(
-                    Modifier.padding(start = 12.dp).size(width = 112.dp, height = 76.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy((-6).dp)
-                ) {
-                    Image(painterResource(R.drawable.bag), contentDescription = "Saco",
-                        contentScale = ContentScale.Fit, modifier = Modifier.size(58.dp))
-                    Image(painterResource(R.drawable.coins), contentDescription = "Montaña de monedas",
-                        contentScale = ContentScale.Fit, modifier = Modifier.size(58.dp))
-                }
+                Image(painterResource(R.drawable.coins), contentDescription = "Montaña de monedas",
+                    contentScale = ContentScale.Fit, modifier = Modifier.padding(start = 12.dp).size(76.dp))
             }
             
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -692,7 +700,10 @@ private fun CreateBag(busy: Boolean, back: () -> Unit, existing: BagData? = null
         }
         OutlinedTextField(costName, { costName = it }, label = { Text("Concepto: alquiler, luz…") }, singleLine = true, modifier = Modifier.fillMaxWidth())
         AmountField(costAmount, { costAmount = it }, "Importe de la salida (€)")
-        IconPicker(costIcon) { costIcon = it }
+        IconPicker(costIcon) {
+            costIcon = it
+            costName = expenseCategories.firstOrNull { category -> category.icon == it }?.name ?: costName
+        }
         OutlinedButton(onClick = {
             val cost = FixedCost(editingCostId ?: UUID.randomUUID().toString(), "", costName.trim(), costIcon, Money.parse(costAmount)!!)
             val index = costs.indexOfFirst { it.id == editingCostId }
@@ -733,7 +744,7 @@ private fun CalendarScreen(data: BagData, today: LocalDate, back: () -> Unit, bu
     val lastMonth = YearMonth.from(end)
     var monthText by rememberSaveable { mutableStateOf(YearMonth.from(today).toString()) }
     var selectedText by rememberSaveable { mutableStateOf(today.toString()) }
-    var weekOnly by rememberSaveable { mutableStateOf(false) }
+    var weekOnly by rememberSaveable { mutableStateOf(true) }
     val month = YearMonth.parse(monthText).coerceIn(firstMonth, lastMonth)
     val selected = LocalDate.parse(selectedText).coerceIn(start, end)
     val weekStart = selected.minusDays((selected.dayOfWeek.value - 1).toLong())
@@ -751,15 +762,15 @@ private fun CalendarScreen(data: BagData, today: LocalDate, back: () -> Unit, bu
     Page("Calendario", data.bag.name, { if (!busy) back() }) {
         SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
             SegmentedButton(
-                selected = !weekOnly,
-                onClick = { weekOnly = false; monthText = YearMonth.from(selected).toString() },
-                shape = SegmentedButtonDefaults.itemShape(0, 2)
-            ) { Text("Mes") }
-            SegmentedButton(
                 selected = weekOnly,
                 onClick = { weekOnly = true },
-                shape = SegmentedButtonDefaults.itemShape(1, 2)
+                shape = SegmentedButtonDefaults.itemShape(0, 2)
             ) { Text("Semana") }
+            SegmentedButton(
+                selected = !weekOnly,
+                onClick = { weekOnly = false; monthText = YearMonth.from(selected).toString() },
+                shape = SegmentedButtonDefaults.itemShape(1, 2)
+            ) { Text("Mes") }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             TextButton(enabled = if (weekOnly) selected.minusWeeks(1) >= start else month > firstMonth, onClick = {
