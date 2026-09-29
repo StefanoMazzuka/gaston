@@ -12,7 +12,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val statusBarColor = android.graphics.Color.rgb(243, 247, 238)
-        enableEdgeToEdge(statusBarStyle = SystemBarStyle.light(statusBarColor))
+        enableEdgeToEdge(statusBarStyle = SystemBarStyle.light(statusBarColor, statusBarColor))
         setContent { GastonApp(viewModel()) }
     }
 }
