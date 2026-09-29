@@ -214,6 +214,18 @@ fun GastonApp(vm: GastonViewModel) {
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
                                         }
                                     }
+                                    Column(
+                                        modifier = Modifier.align(Alignment.Top),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        IconButton(
+                                            onClick = { nav.navigate("edit/${data.bag.id}") },
+                                            enabled = !busy,
+                                            modifier = Modifier.size(40.dp)
+                                        ) {
+                                            Icon(painterResource(R.drawable.ic_edit), contentDescription = "Editar ${data.bag.name}")
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -250,13 +262,18 @@ fun GastonApp(vm: GastonViewModel) {
                 } }
                 composable("edit/{id}") { entry ->
                     val data = bags.find { it.bag.id == entry.arguments?.getString("id") }
-                    if (data != null) CreateBag(busy, { nav.popBackStack() }, existing = data) { name, income, day, saving, percent, costs, opening ->
+                    if (data != null) CreateBag(
+                        busy,
+                        { nav.popBackStack() },
+                        existing = data,
+                        onDelete = { vm.delete(data.bag.id) { nav.popBackStack() } }
+                    ) { name, income, day, saving, percent, costs, opening ->
                         vm.update(data.bag.id, name, income, day, saving, percent, costs, opening) { nav.popBackStack() }
                     }
                 }
                 composable("bag/{id}") { entry ->
                     val data = bags.find { it.bag.id == entry.arguments?.getString("id") }
-                    if (data != null) BagScreen(data, today, busy, { nav.popBackStack() }, { nav.navigate("calendar/${data.bag.id}") }, { nav.navigate("edit/${data.bag.id}") }, vm)
+                    if (data != null) BagScreen(data, today, busy, { nav.popBackStack() }, { nav.navigate("calendar/${data.bag.id}") }, vm)
                     else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
                 }
                 composable("treasury") { TreasuryScreen(bags, today) }
@@ -408,23 +425,15 @@ private fun SavingsInfoDialog(dismiss: () -> Unit) {
 }
 
 @Composable
-private fun BagScreen(data: BagData, today: LocalDate, busy: Boolean, back: () -> Unit, calendar: () -> Unit, edit: () -> Unit, vm: GastonViewModel) {
+private fun BagScreen(data: BagData, today: LocalDate, busy: Boolean, back: () -> Unit, calendar: () -> Unit, vm: GastonViewModel) {
     BackHandler(enabled = busy) { }
     val context = LocalContext.current
-    var deleteBag by rememberSaveable { mutableStateOf(false) }
     var spending by rememberSaveable { mutableStateOf(false) }
     var editingExpenseId by rememberSaveable { mutableStateOf<String?>(null) }
     var deleting by remember { mutableStateOf<Expense?>(null) }
     val budget = currentBudget(data, today)
     val cycle = data.cycles.find { today.toString() >= it.start && today.toString() < it.end }
     Page(data.bag.name, today.format(dateFormat), { if (!busy) back() }) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
-            Row {
-                TextButton(onClick = edit, enabled = !busy) { Text("Editar") }
-                TextButton(onClick = { deleteBag = true }, enabled = !busy,
-                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text("Eliminar") }
-            }
-        }
         Section {
             val initial = cycle?.initial ?: 0L
             val remaining = budget?.remaining ?: 0L
@@ -512,14 +521,6 @@ private fun BagScreen(data: BagData, today: LocalDate, busy: Boolean, back: () -
             }
         }
     }
-    if (deleteBag) AlertDialog(
-        onDismissRequest = { if (!busy) deleteBag = false },
-        title = { Text("¿Eliminar ${data.bag.name}?") },
-        text = { Text("Se eliminarán este saco, sus gastos, sus reservas y todo su historial. Esta acción no se puede deshacer.") },
-        confirmButton = { TextButton(enabled = !busy, onClick = { vm.delete(data.bag.id) { deleteBag = false; back() } },
-            colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text(if (busy) "Eliminando…" else "Eliminar saco") } },
-        dismissButton = { TextButton(enabled = !busy, onClick = { deleteBag = false }) { Text("Cancelar") } }
-    )
     if (spending) ExpenseDialog(busy, { spending = false }) { name, icon, amount ->
         vm.spend(data.bag.id, name, icon, amount) {
             spending = false
@@ -651,8 +652,15 @@ private fun ExpenseDialog(busy: Boolean, dismiss: () -> Unit, existing: Expense?
 }
 
 @Composable
-private fun CreateBag(busy: Boolean, back: () -> Unit, existing: BagData? = null, save: (String, Long, Int, Long, Boolean, List<FixedCost>, Long?) -> Unit) {
+private fun CreateBag(
+    busy: Boolean,
+    back: () -> Unit,
+    existing: BagData? = null,
+    onDelete: (() -> Unit)? = null,
+    save: (String, Long, Int, Long, Boolean, List<FixedCost>, Long?) -> Unit
+) {
     BackHandler(enabled = busy) { }
+    var showDeleteConfirmation by rememberSaveable(existing?.bag?.id) { mutableStateOf(false) }
     var name by rememberSaveable { mutableStateOf(existing?.bag?.name.orEmpty()) }
     var income by rememberSaveable { mutableStateOf(existing?.bag?.income?.let { java.math.BigDecimal.valueOf(it, 2).toPlainString() }.orEmpty()) }
     var day by rememberSaveable { mutableStateOf(existing?.bag?.payday?.toString() ?: "25") }
@@ -721,7 +729,33 @@ private fun CreateBag(busy: Boolean, back: () -> Unit, existing: BagData? = null
         if (editingCostId != null) Text("Guarda o cancela la edición de la salida antes de guardar el saco.")
         else if (costName.isNotBlank() || costAmount.isNotBlank()) Text("Añade la salida pendiente o vacía sus campos antes de guardar.")
         Button(onClick = { save(name, inc!!, payday!!, sav!!, percent, costs.toList(), if (opening.isBlank()) null else Money.parse(opening)) }, enabled = valid && !busy, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp), shape = RoundedCornerShape(16.dp)) { Text(if (busy) "Guardando…" else if (existing == null) "✨ Crear mi saco" else "Guardar cambios") }
+        if (onDelete != null) {
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            TextButton(
+                onClick = { showDeleteConfirmation = true },
+                enabled = !busy,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+            ) {
+                Icon(painterResource(R.drawable.ic_close), contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("Eliminar saco")
+            }
+        }
     }
+    if (showDeleteConfirmation && onDelete != null) AlertDialog(
+        onDismissRequest = { if (!busy) showDeleteConfirmation = false },
+        title = { Text("¿Eliminar ${existing?.bag?.name}?") },
+        text = { Text("Se eliminarán este saco, sus gastos, sus reservas y todo su historial. Esta acción no se puede deshacer.") },
+        confirmButton = {
+            TextButton(
+                enabled = !busy,
+                onClick = onDelete,
+                colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+            ) { Text(if (busy) "Eliminando…" else "Eliminar saco") }
+        },
+        dismissButton = { TextButton(enabled = !busy, onClick = { showDeleteConfirmation = false }) { Text("Cancelar") } }
+    )
 }
 
 @Composable
