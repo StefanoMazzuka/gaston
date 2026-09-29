@@ -22,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
 import com.gaston.app.R
 import androidx.compose.ui.graphics.Color
@@ -212,7 +213,8 @@ fun GastonApp(vm: GastonViewModel) {
                                     Text("TU COFRE DE AHORRO", style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onTertiaryContainer)
                                     Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Image(painterResource(R.drawable.coin), contentDescription = null, modifier = Modifier.size(22.dp).padding(end = 4.dp))
+                                        Image(painterResource(R.drawable.coins), contentDescription = "Montón de monedas",
+                                            contentScale = ContentScale.Fit, modifier = Modifier.size(42.dp).padding(end = 6.dp))
                                         Text(euros(totalReserved), style = MaterialTheme.typography.titleLarge,
                                             fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onTertiaryContainer)
                                     }
@@ -224,6 +226,7 @@ fun GastonApp(vm: GastonViewModel) {
                         Button(onClick = { nav.navigate("create") }, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp), shape = RoundedCornerShape(16.dp)) {
                             Text("＋ Crear un saco")
                         }
+                        CreatorCredit()
                     }
                 }
                 composable("create") { CreateBag(busy, { nav.popBackStack() }) { name, income, day, saving, percent, costs, opening ->
@@ -288,9 +291,11 @@ private fun currentBudget(data: BagData, today: LocalDate): Budget? {
 
 @Composable
 private fun TreasuryScreen(bags: List<BagData>, today: LocalDate) {
+    var showSavingsInfo by rememberSaveable { mutableStateOf(false) }
     val todayText = today.toString()
     val totalReserved = bags.sumOf { data -> data.cycles.filter { it.start <= todayText }.sumOf { it.saving } }
-    Page("Tu cofre", "Ahorro reservado en tus sacos") {
+    if (showSavingsInfo) SavingsInfoDialog { showSavingsInfo = false }
+    Page("Tu cofre", "Ahorro reservado en tus sacos", onInfo = { showSavingsInfo = true }) {
         Section {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Image(painterResource(R.drawable.chest_open), contentDescription = "Cofre de ahorro abierto",
@@ -299,7 +304,8 @@ private fun TreasuryScreen(bags: List<BagData>, today: LocalDate) {
                     Text("TOTAL RESERVADO", style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.tertiary)
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Image(painterResource(R.drawable.coin), contentDescription = null, modifier = Modifier.size(28.dp).padding(end = 5.dp))
+                        Image(painterResource(R.drawable.coins), contentDescription = "Montón de monedas",
+                            contentScale = ContentScale.Fit, modifier = Modifier.size(46.dp).padding(end = 6.dp))
                         Text(euros(totalReserved), style = MaterialTheme.typography.headlineSmall,
                             fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                     }
@@ -322,8 +328,8 @@ private fun TreasuryScreen(bags: List<BagData>, today: LocalDate) {
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
             ) {
                 Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Image(painterResource(R.drawable.coin), contentDescription = null,
-                        modifier = Modifier.size(36.dp).padding(end = 8.dp))
+                    Image(painterResource(R.drawable.coins), contentDescription = "Montón de monedas",
+                        contentScale = ContentScale.Fit, modifier = Modifier.size(44.dp).padding(end = 8.dp))
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                         Text(data.bag.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                         Text("Este ciclo · ${euros(currentSaving)}", style = MaterialTheme.typography.bodySmall,
@@ -336,7 +342,33 @@ private fun TreasuryScreen(bags: List<BagData>, today: LocalDate) {
         }
         Text("Importes calculados a partir del ahorro reservado en cada ciclo; no se registran retiradas del cofre.",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        CreatorCredit()
     }
+}
+
+@Composable
+private fun CreatorCredit() {
+    val uriHandler = LocalUriHandler.current
+    TextButton(onClick = { uriHandler.openUri("https://github.com/StefanoMazzuka/gaston") },
+        modifier = Modifier.fillMaxWidth()) {
+        Text("Stefano Mazzuka · GitHub", color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun SavingsInfoDialog(dismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = dismiss,
+        title = { Text("¿Cómo crece el cofre?") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Cada ciclo reserva una cantidad para el ahorro. Al terminar un ciclo, la reserva del siguiente se incorpora al total y el cofre puede seguir creciendo.")
+                Text("Ahora se suman las reservas previstas de los ciclos iniciados. La app todavía no comprueba si se cumplió una meta ni registra retiradas, así que el total no es un saldo bancario confirmado.")
+                Text("Para sumar únicamente cuando se alcance una meta, habría que añadir ese seguimiento.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        },
+        confirmButton = { TextButton(onClick = dismiss) { Text("Entendido") } }
+    )
 }
 
 @Composable
@@ -653,54 +685,145 @@ private fun CalendarScreen(data: BagData, today: LocalDate, back: () -> Unit, bu
     val lastMonth = YearMonth.from(end)
     var monthText by rememberSaveable { mutableStateOf(YearMonth.from(today).toString()) }
     var selectedText by rememberSaveable { mutableStateOf(today.toString()) }
+    var weekOnly by rememberSaveable { mutableStateOf(false) }
     val month = YearMonth.parse(monthText).coerceIn(firstMonth, lastMonth)
     val selected = LocalDate.parse(selectedText).coerceIn(start, end)
-    val allowances = remember(data, today, month, cycle) {
+    val weekStart = selected.minusDays((selected.dayOfWeek.value - 1).toLong())
+    val weekDates = (0L..6L).map { weekStart.plusDays(it) }.filter { it >= start && it <= end }
+    val visibleDates = if (weekOnly) weekDates else
+        (1..month.lengthOfMonth()).map { month.atDay(it) }.filter { it >= start && it <= end }
+    val allowances = remember(data, today, month, cycle, selected, weekOnly) {
         val spending = data.expenses.map { Spending(LocalDate.parse(it.date), it.cents) }
-        (1..month.lengthOfMonth()).associate { number ->
-            val date = month.atDay(number)
-            date to if (date >= start && date < end)
+        visibleDates.associateWith { date ->
+            if (date < end)
                 BudgetCalculator.calendarAllowance(cycle.initial, Window(start, end), today, date, spending)
             else null
         }
     }
     Page("Calendario", data.bag.name, { if (!busy) back() }) {
+        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+            SegmentedButton(
+                selected = !weekOnly,
+                onClick = { weekOnly = false; monthText = YearMonth.from(selected).toString() },
+                shape = SegmentedButtonDefaults.itemShape(0, 2)
+            ) { Text("Mes") }
+            SegmentedButton(
+                selected = weekOnly,
+                onClick = { weekOnly = true },
+                shape = SegmentedButtonDefaults.itemShape(1, 2)
+            ) { Text("Semana") }
+        }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            TextButton(enabled = month > firstMonth, onClick = {
-                val previous = month.minusMonths(1)
-                monthText = previous.toString()
-                selectedText = maxOf(start, previous.atDay(1)).toString()
+            TextButton(enabled = if (weekOnly) selected.minusWeeks(1) >= start else month > firstMonth, onClick = {
+                if (weekOnly) {
+                    selectedText = maxOf(start, selected.minusWeeks(1)).toString()
+                    monthText = YearMonth.from(LocalDate.parse(selectedText)).toString()
+                } else {
+                    val previous = month.minusMonths(1)
+                    monthText = previous.toString()
+                    selectedText = maxOf(start, previous.atDay(1)).toString()
+                }
             }) { Text("←") }
-            Text(month.format(DateTimeFormatter.ofPattern("MMMM yyyy", Spanish)))
-            TextButton(enabled = month < lastMonth, onClick = {
-                val next = month.plusMonths(1)
-                monthText = next.toString()
-                selectedText = next.atDay(1).toString()
+            Text(
+                if (weekOnly) {
+                    val weekFormat = DateTimeFormatter.ofPattern("d MMM", Spanish)
+                    "${weekDates.first().format(weekFormat)} – ${weekDates.last().format(weekFormat)}"
+                } else month.format(DateTimeFormatter.ofPattern("MMMM yyyy", Spanish)),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+            TextButton(enabled = if (weekOnly) selected.plusWeeks(1) <= end else month < lastMonth, onClick = {
+                if (weekOnly) {
+                    selectedText = minOf(end, selected.plusWeeks(1)).toString()
+                    monthText = YearMonth.from(LocalDate.parse(selectedText)).toString()
+                } else {
+                    val next = month.plusMonths(1)
+                    monthText = next.toString()
+                    selectedText = next.atDay(1).toString()
+                }
             }) { Text("→") }
         }
-        Row { listOf("L", "M", "X", "J", "V", "S", "D").forEach { Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { Text(it) } } }
-        val offset = month.atDay(1).dayOfWeek.value - 1
-        val count = ((offset + month.lengthOfMonth() + 6) / 7) * 7
-        (0 until count).toList().chunked(7).forEach { week ->
-            Row { week.forEach { index ->
-                val number = index - offset + 1
-                val date = if (number in 1..month.lengthOfMonth()) month.atDay(number).takeIf { it >= start && it <= end } else null
+        if (weekOnly) {
+            weekDates.forEach { date ->
                 val isEnd = date == end
-                    val shape = RoundedCornerShape(14.dp)
-                Column(Modifier.weight(1f).heightIn(min = 80.dp)
-                        .background(if (isEnd) MaterialTheme.colorScheme.tertiaryContainer else if (date == selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent, shape)
-                        .then(if (isEnd) Modifier.border(1.dp, MaterialTheme.colorScheme.tertiary, shape) else if (date == today) Modifier.border(1.dp, MaterialTheme.colorScheme.primary, shape) else Modifier)
-                    .then(if (date != null) Modifier.clickable { selectedText = date.toString() } else Modifier), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                    if (date != null) {
-                        Text(number.toString(), fontWeight = if (date == today) FontWeight.Bold else FontWeight.Normal)
-                        val allowance = allowances[date]
-                        Text(if (isEnd) "Fin" else allowance?.let { java.math.BigDecimal.valueOf(it, 2).toPlainString().replace('.', ',') } ?: "—",
-                            style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                            color = if (allowance != null && allowance < 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(if (!isEnd && data.expenses.any { it.date == date.toString() }) "•" else "", style = MaterialTheme.typography.labelSmall)
+                val expenses = data.expenses.filter { it.date == date.toString() }
+                val allowance = allowances[date]
+                val cardColor = when {
+                    isEnd -> MaterialTheme.colorScheme.tertiaryContainer
+                    date == selected -> MaterialTheme.colorScheme.primaryContainer
+                    date == today -> MaterialTheme.colorScheme.secondaryContainer
+                    else -> MaterialTheme.colorScheme.surface
+                }
+                OutlinedCard(
+                    onClick = { selectedText = date.toString() },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.outlinedCardColors(containerColor = cardColor),
+                    border = BorderStroke(
+                        if (date == selected || isEnd) 1.5.dp else 1.dp,
+                        if (isEnd) MaterialTheme.colorScheme.tertiary else if (date == selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
+                    )
+                ) {
+                    Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(
+                            Modifier.width(64.dp).heightIn(min = 58.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Text(date.format(DateTimeFormatter.ofPattern("EEE", Spanish)).uppercase(Spanish),
+                                style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                            Text(date.dayOfMonth.toString(), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
+                        }
+                        Column(Modifier.weight(1f).padding(start = 10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                            Text(
+                                if (isEnd) "🏁 Cierre del ciclo" else allowance?.let { "🪙 ${euros(it)} disponibles" } ?: "Sin presupuesto",
+                                style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold,
+                                color = if (allowance != null && allowance < 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                if (expenses.isEmpty()) "✨ Sin gastos" else "🛍 ${expenses.size} ${if (expenses.size == 1) "gasto" else "gastos"}",
+                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
-            } }
+            }
+        } else {
+            Row { listOf("L", "M", "X", "J", "V", "S", "D").forEach { Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { Text(it, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant) } } }
+            val offset = month.atDay(1).dayOfWeek.value - 1
+            val count = ((offset + month.lengthOfMonth() + 6) / 7) * 7
+            (0 until count).toList().chunked(7).forEach { week ->
+                Row { week.forEach { index ->
+                    val number = index - offset + 1
+                    val date = if (number in 1..month.lengthOfMonth()) month.atDay(number).takeIf { it >= start && it <= end } else null
+                    val isEnd = date == end
+                    val shape = RoundedCornerShape(14.dp)
+                    val cellColor = when {
+                        isEnd -> MaterialTheme.colorScheme.tertiaryContainer
+                        date == selected -> MaterialTheme.colorScheme.primaryContainer
+                        date == today -> MaterialTheme.colorScheme.secondaryContainer
+                        else -> MaterialTheme.colorScheme.surface
+                    }
+                    Column(
+                        Modifier.weight(1f).padding(2.dp).heightIn(min = 80.dp)
+                            .background(cellColor, shape)
+                            .then(if (isEnd || date == selected || date == today) Modifier.border(1.dp,
+                                if (isEnd) MaterialTheme.colorScheme.tertiary else if (date == selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary, shape) else Modifier)
+                            .then(if (date != null) Modifier.clickable { selectedText = date.toString() } else Modifier),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        if (date != null) {
+                            if (date == today) Text("HOY", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.Bold)
+                            Text(number.toString(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold)
+                            val allowance = allowances[date]
+                            Text(if (isEnd) "🏁" else allowance?.let { java.math.BigDecimal.valueOf(it, 2).toPlainString().replace('.', ',') } ?: "—",
+                                style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                color = if (allowance != null && allowance < 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+                            if (!isEnd && data.expenses.any { it.date == date.toString() }) Text("🪙", style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+                } }
+            }
         }
         Text("Fin del ciclo · ${end.format(DateTimeFormatter.ofPattern("d MMM yyyy", Spanish))}", color = MaterialTheme.colorScheme.tertiary, fontWeight = FontWeight.Medium)
         Text(selected.format(dateFormat), style = MaterialTheme.typography.titleMedium)
