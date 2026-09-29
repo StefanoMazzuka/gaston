@@ -31,9 +31,15 @@ interface BagDao {
     @Transaction @Query("SELECT * FROM bags ORDER BY rowid") fun observe(): Flow<List<BagData>>
     @Transaction @Query("SELECT * FROM bags") suspend fun all(): List<BagData>
     @Insert suspend fun insertBag(bag: Bag)
+    @Update suspend fun updateBag(bag: Bag)
+    @Query("DELETE FROM bags WHERE id = :id") suspend fun deleteBag(id: String)
+    @Query("DELETE FROM fixed_costs WHERE bagId = :bagId") suspend fun deleteCosts(bagId: String)
     @Insert suspend fun insertCosts(costs: List<FixedCost>)
     @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun insertCycle(cycle: Cycle)
+    @Update suspend fun updateCycle(cycle: Cycle)
     @Insert suspend fun insertExpense(expense: Expense)
+    @Query("UPDATE expenses SET name = :name, icon = :icon, cents = :cents WHERE id = :id")
+    suspend fun editExpense(id: String, name: String, icon: String, cents: Long): Int
     @Query("DELETE FROM expenses WHERE id = :id") suspend fun deleteExpense(id: String)
 }
 @Database(entities = [Bag::class, FixedCost::class, Cycle::class, Expense::class], version = 1, exportSchema = true)

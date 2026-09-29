@@ -35,7 +35,9 @@ Versiones fijadas: AGP 8.9.2, Gradle 8.11.1, Kotlin 2.1.20, Compose BOM 2025.04.
 - Creación con ingreso, fecha, salidas con iconos y ahorro fijo o porcentual.
 - Disponible inicial opcional para empezar a mitad del ciclo.
 - Fecha y presupuesto diario, siete días y total restante.
-- Saco de gemas 2D con nivel animado.
+- Interfaz sobria con tarjetas de saldo y presupuesto diario.
+- Edición de nombre, ingresos, día de cobro, ahorro y salidas fijas.
+- Eliminación de sacos con confirmación, incluidos sus gastos e historial.
 - Registro de gastos y deshacer con confirmación.
 - Calendario, movimientos diarios y saldos al cierre de ciclos anteriores.
 - Persistencia local Room, actualización de ciclos al regresar y cambio de día.
@@ -47,13 +49,15 @@ Versiones fijadas: AGP 8.9.2, Gradle 8.11.1, Kotlin 2.1.20, Compose BOM 2025.04.
 - El primer ciclo empieza hoy. El disponible real opcional ya debe excluir pagos y ahorro reservados.
 - El presupuesto de hoy se fija sobre el saldo al empezar el día; los gastos de hoy se restan de ese margen. Mañana se reparte el saldo restante de nuevo.
 - Los céntimos se guardan como enteros. El reparto diario redondea hacia abajo; el resto permanece disponible.
-- Los excesos de gasto se muestran como importes negativos; el dibujo nunca tiene llenado negativo.
+- Los excesos de gasto se muestran como importes negativos.
 - Al renovar el ciclo, el saldo anterior queda visible en el historial. No se transfiere automáticamente al siguiente saco ni a un cofre de ahorro.
 - Las reservas se descuentan al calcular el presupuesto inicial. No deben registrarse otra vez como gasto libre.
 
 ## Pendiente
 
-Edición de configuración, marcado de reservas pagadas, exportación/restauración, cofre de ahorro, política definitiva de sobrantes, animación de apertura y salida de gemas y pruebas instrumentadas en móvil.
+Marcado de reservas pagadas, exportación/restauración, cofre de ahorro, política definitiva de sobrantes y pruebas instrumentadas en móvil.
+
+Al editar, el nombre cambia inmediatamente. La configuración financiera se aplica al siguiente ciclo: el saldo, ahorro y fecha de cierre del ciclo actual se conservan. Si cambia el día de cobro, el siguiente ciclo empieza al cierre del actual y termina en la siguiente fecha del nuevo calendario. El formulario permite añadir, editar y quitar salidas fijas. Eliminar un saco borra también sus salidas fijas, ciclos y gastos; los demás sacos se conservan.
 
 ## Compilación
 
@@ -67,4 +71,4 @@ No se necesitan permisos de internet en la app ni conexión bancaria. La base de
 
 ## Verificación realizada
 
-Compilación `testDebugUnitTest assembleDebug` completada correctamente con JDK 17 y SDK 35. Las 8 pruebas unitarias pasan y se ha generado el APK debug. Queda pendiente probar la interfaz y la persistencia en el móvil físico; no se ha conectado ningún dispositivo durante esta verificación.
+Compilación `testDebugUnitTest assembleDebug` completada correctamente con JDK 17 y SDK 35. Pasan 12 pruebas: 8 de presupuesto y 4 de persistencia Room con Robolectric que cubren edición, conservación de ciclos, rechazo de cambios inválidos y borrado en cascada sin afectar a otros sacos. Se ha generado el APK debug. Queda pendiente probar la interfaz y la persistencia en el móvil físico; no se ha conectado ningún dispositivo durante esta verificación.

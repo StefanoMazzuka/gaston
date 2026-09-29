@@ -6,6 +6,59 @@ import java.time.LocalDate
 import java.time.YearMonth
 
 class BudgetTest {
+    @Test fun weeklyBudgetEndsOnSundayAndSubtractsTodaysSpending() {
+        val monday = LocalDate.of(2026, 6, 1)
+        val window = Window(monday, monday.plusDays(14))
+        for (offset in 0L..6L) {
+            val date = monday.plusDays(offset)
+            val budget = BudgetCalculator.calculate((14 - offset) * 1000, window, date,
+                listOf(Spending(date, 200)))
+            assertEquals((7 - offset) * 1000 - 200, budget.week)
+        }
+    }
+
+    @Test fun weeklyBudgetStopsAtCycleEndIfBeforeSunday() {
+        val wednesday = LocalDate.of(2026, 6, 3)
+        val budget = BudgetCalculator.calculate(3000, Window(wednesday, wednesday.plusDays(2)),
+            wednesday, listOf(Spending(wednesday, 500)))
+        assertEquals(2500L, budget.week)
+    }
+
+    @Test fun calendarUpdatesTodayAndRedistributesFutureDays() {
+        val today = LocalDate.of(2026, 6, 1)
+        val window = Window(today, today.plusDays(4))
+        val spending = listOf(Spending(today, 400))
+        assertEquals(-150L, BudgetCalculator.calendarAllowance(1000, window, today, today, spending))
+        for (offset in 1L..3L) {
+            assertEquals(200L, BudgetCalculator.calendarAllowance(1000, window, today, today.plusDays(offset), spending))
+            assertEquals(333L + if (offset == 3L) 1L else 0L,
+                BudgetCalculator.calendarAllowance(1000, window, today, today.plusDays(offset), emptyList()))
+        }
+    }
+
+    @Test fun calendarPastIgnoresLaterExpenses() {
+        val start = LocalDate.of(2026, 6, 1)
+        val window = Window(start, start.plusDays(4))
+        assertEquals(150L, BudgetCalculator.calendarAllowance(1000, window, start.plusDays(2), start,
+            listOf(Spending(start, 100), Spending(start.plusDays(2), 800))))
+    }
+
+    @Test fun calendarFutureCycleExcludesPreviousCycleExpensesAndPreservesCents() {
+        val today = LocalDate.of(2026, 6, 1)
+        val start = today.plusDays(4)
+        val window = Window(start, start.plusDays(3))
+        val amounts = (0L..2L).map { BudgetCalculator.calendarAllowance(1000, window, today, start.plusDays(it), listOf(Spending(today, 900))) }
+        assertEquals(listOf(333L, 333L, 334L), amounts)
+    }
+
+    @Test fun calendarKeepsNegativeBalanceAndHandlesLastDay() {
+        val today = LocalDate.of(2026, 6, 1)
+        val window = Window(today, today.plusDays(2))
+        val spending = listOf(Spending(today, 1200))
+        assertEquals(-200L, BudgetCalculator.calendarAllowance(1000, window, today, today.plusDays(1), spending))
+        assertEquals(-200L, BudgetCalculator.calendarAllowance(1000, window, today.plusDays(1), today.plusDays(1), spending))
+    }
+
     @Test fun weekendMovesToMonday() {
         assertEquals(LocalDate.of(2026, 4, 27), BudgetCalculator.payday(YearMonth.of(2026, 4), 25))
         assertEquals(LocalDate.of(2026, 1, 26), BudgetCalculator.payday(YearMonth.of(2026, 1), 25))

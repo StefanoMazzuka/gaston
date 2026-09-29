@@ -25,12 +25,22 @@ class GastonViewModel(app: Application) : AndroidViewModel(app) {
         repository.spend(id, name, icon, cents, LocalDate.now()); done()
     }
     fun undo(id: String) = action { repository.undo(id) }
+    fun editExpense(id: String, name: String, icon: String, cents: Long, done: () -> Unit) = action {
+        repository.editExpense(id, name, icon, cents)
+        done()
+    }
+    fun update(id: String, name: String, income: Long, day: Int, saving: Long, percent: Boolean,
+               costs: List<FixedCost>, opening: Long? = null, done: () -> Unit) = action {
+        repository.update(id, name, income, day, saving, percent, costs, opening, LocalDate.now())
+        done()
+    }
+    fun delete(id: String, done: () -> Unit) = action { repository.delete(id); done() }
     private fun action(block: suspend () -> Unit) {
         if (busy.value) return
         busy.value = true
         viewModelScope.launch {
             try { block() }
-            catch (e: Exception) { if (e is CancellationException) throw e; error.value = "No se pudo guardar. Revisa los datos e inténtalo de nuevo." }
+            catch (e: Exception) { if (e is CancellationException) throw e; error.value = "No se pudo completar la operación. Revisa los datos e inténtalo de nuevo." }
             finally { busy.value = false }
         }
     }

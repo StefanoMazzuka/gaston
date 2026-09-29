@@ -1,7 +1,12 @@
 package com.gaston.app.ui
 
+import androidx.compose.foundation.BorderStroke
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -13,9 +18,13 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import com.gaston.app.R
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -35,7 +44,32 @@ import java.util.UUID
 private val Spanish = Locale.forLanguageTag("es-ES")
 private fun euros(cents: Long) = NumberFormat.getCurrencyInstance(Spanish).format(java.math.BigDecimal.valueOf(cents, 2))
 private val dateFormat = DateTimeFormatter.ofPattern("EEEE d 'de' MMMM", Spanish)
-private val icons = listOf("🏠", "💡", "📺", "❤️", "🛒", "🚌", "☕", "🎁")
+private val icons = listOf(
+    "🛒", "🏠", "💡", "📺", "❤️", "🚌", "☕", "🎁",
+    "🍕", "🍔", "🥖", "📶", "💧", "🚗", "🚕", "✈️",
+    "💊", "🏋️", "✂️", "👗", "🎬", "🎮", "🐶", "👶",
+    "💼", "🎓", "🏦", "🔧", "📦", "❓"
+)
+
+private fun cycleProgress(remaining: Long, initial: Long): Float {
+    if (initial <= 0) return 0f
+    return (remaining.toFloat() / initial.toFloat()).coerceIn(0f, 1f)
+}
+
+@Composable
+private fun SacoGraphic(
+    progress: Float,
+    isNegative: Boolean,
+    modifier: Modifier = Modifier
+) {
+    Image(
+        painter = painterResource(R.drawable.bag),
+        contentDescription = if (isNegative) "Saco con saldo negativo" else
+            "Saco con ${(progress.coerceIn(0f, 1f) * 100).toInt()}% del presupuesto disponible",
+        contentScale = ContentScale.Fit,
+        modifier = modifier
+    )
+}
 
 @Composable
 fun GastonApp(vm: GastonViewModel) {
@@ -56,52 +90,107 @@ fun GastonApp(vm: GastonViewModel) {
         vm.refresh()
         while (true) { delay(30_000); val now = LocalDate.now(); if (now != today) { today = now; vm.refresh() } }
     }
-    MaterialTheme(colorScheme = lightColorScheme(primary = Color(0xFF245E4B), secondary = Color(0xFF78629F), background = Color(0xFFF8F6F0), surface = Color(0xFFFFFDF7))) {
+    MaterialTheme(colorScheme = lightColorScheme(
+        primary = Color(0xFF24665D), onPrimary = Color.White,
+        primaryContainer = Color(0xFFD8EDE4), onPrimaryContainer = Color(0xFF123E36),
+        secondary = Color(0xFF735B35), onSecondary = Color.White,
+        secondaryContainer = Color(0xFFF1E4CD), onSecondaryContainer = Color(0xFF4D391D),
+        tertiary = Color(0xFF825C19), onTertiary = Color.White,
+        tertiaryContainer = Color(0xFFFFE7B5), onTertiaryContainer = Color(0xFF583D0B),
+        background = Color(0xFFF7F3EB), onBackground = Color(0xFF263D38),
+        surface = Color(0xFFFFFCF6), onSurface = Color(0xFF263D38),
+        surfaceVariant = Color(0xFFECE8DC), onSurfaceVariant = Color(0xFF5D655C),
+        surfaceContainerLowest = Color(0xFFFFFDF8), surfaceContainerLow = Color(0xFFF5F0E6),
+        surfaceContainer = Color(0xFFF0EBDF), surfaceContainerHigh = Color(0xFFEAE5D8),
+        surfaceContainerHighest = Color(0xFFE4DFD2), surfaceTint = Color(0xFF24665D),
+        outline = Color(0xFF7D857A), outlineVariant = Color(0xFFDADDCF),
+        error = Color(0xFFAD3934), onError = Color.White,
+        errorContainer = Color(0xFFFFDAD5), onErrorContainer = Color(0xFF6D1716)
+    )) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             NavHost(nav, "bags", Modifier.safeDrawingPadding()) {
                 composable("bags") {
-                    Page("Tus sacos", "Un lugar para cada banco") {
-                        if (bags.isEmpty()) { GemBag(1f); Text("Tu dinero, un día a la vez.", style = MaterialTheme.typography.headlineSmall); Text("Crea tu primer saco para conocer tu margen diario.") }
+                    var showHowItWorks by rememberSaveable { mutableStateOf(false) }
+                    if (showHowItWorks) HowItWorksDialog { showHowItWorks = false }
+                    Page("Sacos", "Resumen de tus presupuestos", onInfo = { showHowItWorks = true }) {
+                        if (bags.isEmpty()) Section {
+                            Text("Todavía no hay sacos", style = MaterialTheme.typography.titleLarge)
+                            Text("Añade un banco y configura su presupuesto mensual.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                         bags.forEach { data ->
-                            Card(onClick = { nav.navigate("bag/${data.bag.id}") }, modifier = Modifier.fillMaxWidth()) {
-                                Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Text("💎  ${data.bag.name}", style = MaterialTheme.typography.titleLarge)
-                                    currentBudget(data, today)?.let { Text("Hoy: ${euros(it.today)} · Total: ${euros(it.remaining)}") }
-                                    Text("Abrir saco →", color = MaterialTheme.colorScheme.primary)
+                            OutlinedCard(onClick = { nav.navigate("bag/${data.bag.id}") }, modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
+                                Row(Modifier.padding(20.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                    currentBudget(data, today)?.let { budget ->
+                                        val cycle = data.cycles.find { today.toString() >= it.start && today.toString() < it.end }
+                                        val initial = cycle?.initial ?: 0L
+                                        val progress = cycleProgress(budget.remaining, initial)
+                                        SacoGraphic(
+                                            progress = progress,
+                                            isNegative = budget.remaining < 0,
+                                            modifier = Modifier.padding(end = 16.dp).size(80.dp)
+                                        )
+                                    }
+                                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                        Text(data.bag.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Medium)
+                                        currentBudget(data, today)?.let { budget ->
+                                            Text(euros(budget.remaining), style = MaterialTheme.typography.headlineMedium)
+                                        }
+                                    }
                                 }
                             }
                         }
-                        Button(onClick = { nav.navigate("create") }, modifier = Modifier.fillMaxWidth()) { Text("+ Crear saco") }
+                        OutlinedButton(onClick = { nav.navigate("create") }, modifier = Modifier.fillMaxWidth()) { Text("Añadir saco") }
                     }
                 }
                 composable("create") { CreateBag(busy, { nav.popBackStack() }) { name, income, day, saving, percent, costs, opening ->
                     vm.create(name, income, day, saving, percent, costs, opening) { id -> nav.popBackStack(); nav.navigate("bag/$id") }
                 } }
+                composable("edit/{id}") { entry ->
+                    val data = bags.find { it.bag.id == entry.arguments?.getString("id") }
+                    if (data != null) CreateBag(busy, { nav.popBackStack() }, existing = data) { name, income, day, saving, percent, costs, opening ->
+                        vm.update(data.bag.id, name, income, day, saving, percent, costs, opening) { nav.popBackStack() }
+                    }
+                }
                 composable("bag/{id}") { entry ->
                     val data = bags.find { it.bag.id == entry.arguments?.getString("id") }
-                    if (data != null) BagScreen(data, today, busy, { nav.popBackStack() }, { nav.navigate("calendar/${data.bag.id}") }, vm)
+                    if (data != null) BagScreen(data, today, busy, { nav.popBackStack() }, { nav.navigate("calendar/${data.bag.id}") }, { nav.navigate("edit/${data.bag.id}") }, vm)
                     else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
                 }
                 composable("calendar/{id}") { entry ->
                     val data = bags.find { it.bag.id == entry.arguments?.getString("id") }
-                    if (data != null) CalendarScreen(data, today, { nav.popBackStack() })
+                    if (data != null) CalendarScreen(data, today, { nav.popBackStack() }, busy, vm)
                 }
             }
-            if (error != null) AlertDialog(onDismissRequest = { vm.error.value = null }, title = { Text("No se ha guardado") }, text = { Text(error!!) }, confirmButton = { TextButton(onClick = { vm.error.value = null }) { Text("Entendido") } })
+            if (error != null) AlertDialog(onDismissRequest = { vm.error.value = null }, title = { Text("No se ha podido completar") }, text = { Text(error!!) }, confirmButton = { TextButton(onClick = { vm.error.value = null }) { Text("Entendido") } })
         }
     }
 }
 
 @Composable
-private fun Page(title: String, subtitle: String, back: (() -> Unit)? = null, content: @Composable ColumnScope.() -> Unit) {
+private fun Page(title: String, subtitle: String, back: (() -> Unit)? = null, onInfo: (() -> Unit)? = null, content: @Composable ColumnScope.() -> Unit) {
     Column(Modifier.fillMaxSize().imePadding().verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         if (back != null) TextButton(onClick = back) { Text("← Volver") }
-        Text(title, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(title, modifier = Modifier.weight(1f), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold)
+            if (onInfo != null) IconButton(onClick = onInfo) {
+                Icon(painterResource(R.drawable.ic_info), contentDescription = "¿Cómo se calcula el presupuesto?", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
         Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant)
         content()
         Spacer(Modifier.height(16.dp))
     }
 }
+@Composable
+private fun Section(content: @Composable ColumnScope.() -> Unit) {
+    Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp), content = content)
+    }
+}
+
 private fun currentBudget(data: BagData, today: LocalDate): Budget? {
     val cycle = data.cycles.find { today.toString() >= it.start && today.toString() < it.end } ?: return null
     return BudgetCalculator.calculate(cycle.initial, Window(LocalDate.parse(cycle.start), LocalDate.parse(cycle.end)), today,
@@ -109,37 +198,145 @@ private fun currentBudget(data: BagData, today: LocalDate): Budget? {
 }
 
 @Composable
-private fun BagScreen(data: BagData, today: LocalDate, busy: Boolean, back: () -> Unit, calendar: () -> Unit, vm: GastonViewModel) {
+private fun BagScreen(data: BagData, today: LocalDate, busy: Boolean, back: () -> Unit, calendar: () -> Unit, edit: () -> Unit, vm: GastonViewModel) {
+    BackHandler(enabled = busy) { }
+    var deleteBag by rememberSaveable { mutableStateOf(false) }
     var spending by rememberSaveable { mutableStateOf(false) }
+    var editingExpenseId by rememberSaveable { mutableStateOf<String?>(null) }
     var deleting by remember { mutableStateOf<Expense?>(null) }
     val budget = currentBudget(data, today)
     val cycle = data.cycles.find { today.toString() >= it.start && today.toString() < it.end }
-    Page(data.bag.name, today.format(dateFormat), back) {
-        Text("HOY TE QUEDAN", style = MaterialTheme.typography.labelLarge)
-        Text(budget?.let { euros(it.today) } ?: "Actualizando…", style = MaterialTheme.typography.displayMedium,
-            color = if ((budget?.today ?: 0) < 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
-        GemBag(if (cycle != null && cycle.initial > 0) (budget?.remaining ?: 0).toFloat() / cycle.initial else 0f)
-        Text("En tu saco: ${euros(budget?.remaining ?: 0)}", style = MaterialTheme.typography.titleLarge)
-        Text("Próximos ${minOf(budget?.days ?: 0, 7)} días: ${euros(budget?.week ?: 0)}")
-        Text("Próximo cobro: ${cycle?.end ?: "…"} · Quedan ${budget?.days ?: 0} días")
-        if ((budget?.today ?: 0) < 0) Text("Has superado el margen de hoy. El presupuesto de los próximos días se ajustará.")
-        Button(onClick = { spending = true }, enabled = !busy && cycle != null, modifier = Modifier.fillMaxWidth().height(56.dp)) { Text("− Sacar") }
-        OutlinedButton(onClick = calendar, modifier = Modifier.fillMaxWidth()) { Text("Calendario e historial") }
-        Text("Dinero reservado", style = MaterialTheme.typography.titleLarge)
-        Text("Ahorro del ciclo: ${euros(cycle?.saving ?: 0)}")
-        data.costs.forEach { Text("${it.icon} ${it.name} · ${euros(it.cents)}") }
-        Text("Estos pagos ya están descontados del presupuesto libre.", style = MaterialTheme.typography.bodySmall)
+    Page(data.bag.name, today.format(dateFormat), { if (!busy) back() }) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+            Row {
+                TextButton(onClick = edit, enabled = !busy) { Text("Editar") }
+                TextButton(onClick = { deleteBag = true }, enabled = !busy,
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text("Eliminar") }
+            }
+        }
+        Section {
+            val initial = cycle?.initial ?: 0L
+            val remaining = budget?.remaining ?: 0L
+            val progress = cycleProgress(remaining, initial)
+            val percent = if (initial > 0 && remaining > 0) ((remaining.toDouble() / initial.toDouble()) * 100).toInt() else 0
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Disponible hoy", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(budget?.let { euros(it.today) } ?: "Actualizando…", style = MaterialTheme.typography.displaySmall,
+                        color = if ((budget?.today ?: 0) < 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+                }
+                SacoGraphic(
+                    progress = progress,
+                    isNegative = remaining < 0,
+                    modifier = Modifier.padding(start = 12.dp).size(90.dp)
+                )
+            }
+            
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            
+            LinearProgressIndicator(
+                progress = { progress },
+                modifier = Modifier.fillMaxWidth().height(10.dp),
+                color = if (remaining < 0) MaterialTheme.colorScheme.error else if (progress < 0.2f) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                trackColor = MaterialTheme.colorScheme.outlineVariant,
+                drawStopIndicator = {}
+            )
+            Text("${maxOf(0, percent)}% disponible", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            
+            Text("Hasta el domingo · ${euros(budget?.week ?: 0)}")
+            Text("Fin del ciclo · ${cycle?.end ?: "…"} · ${budget?.days ?: 0} días restantes", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if ((budget?.today ?: 0) < 0) Text("Has superado el margen de hoy. El presupuesto de los próximos días se ajustará.", color = MaterialTheme.colorScheme.error)
+        Button(onClick = { spending = true }, enabled = !busy && cycle != null, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp), shape = RoundedCornerShape(12.dp)) { Text("Registrar gasto") }
+        OutlinedButton(onClick = calendar, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) { Text("Calendario e historial") }
         Text("Últimos gastos", style = MaterialTheme.typography.titleLarge)
         if (data.expenses.isEmpty()) Text("Tu saco todavía no tiene gastos.")
         data.expenses.sortedByDescending { it.date }.take(10).forEach { expense ->
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) { Text("${expense.icon} ${expense.name} · ${euros(expense.cents)}"); Text(expense.date, style = MaterialTheme.typography.bodySmall) }
-                TextButton(onClick = { deleting = expense }, enabled = !busy) { Text("Deshacer") }
+                Text("${expense.icon.ifBlank { "❓" }} ${expense.name} · ${euros(expense.cents)}", Modifier.weight(1f))
+                Row {
+                    IconButton(onClick = { editingExpenseId = expense.id }, enabled = !busy) {
+                        Icon(painterResource(R.drawable.ic_edit), contentDescription = "Editar ${expense.name}")
+                    }
+                    IconButton(onClick = { deleting = expense }, enabled = !busy) {
+                        Icon(painterResource(R.drawable.ic_close), contentDescription = "Deshacer ${expense.name}")
+                    }
+                }
+            }
+        }
+        Section {
+            val cycleSaving = cycle?.saving ?: 0L
+            val templateSaving = Money.saving(data.bag.income, data.bag.savingValue, data.bag.savingPercent)
+            val hasPendingChange = cycleSaving != templateSaving
+
+            Text("Planificación y Ahorro", style = MaterialTheme.typography.titleMedium)
+            if (hasPendingChange) {
+                Text("Ahorro apartado este ciclo · ${euros(cycleSaving)}", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.primary)
+                Text("Nuevo ahorro para el próximo ciclo · ${euros(templateSaving)}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.secondary)
+                Text("Has editado el saco. El nuevo ahorro entrará en vigor el ${cycle?.end ?: "próximo ciclo"}.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                Text("Ahorro mensual apartado · ${euros(cycleSaving)}", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
+            }
+            
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            
+            Text("Configuración base", style = MaterialTheme.typography.titleMedium)
+            Text("Ingreso mensual · ${euros(data.bag.income)}")
+            if (data.costs.isNotEmpty()) {
+                Text("Salidas fijas mensuales:", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                data.costs.forEach { Text("  • ${it.icon.ifBlank { "🏠" }} ${it.name}: ${euros(it.cents)}", style = MaterialTheme.typography.bodyMedium) }
             }
         }
     }
+    if (deleteBag) AlertDialog(
+        onDismissRequest = { if (!busy) deleteBag = false },
+        title = { Text("¿Eliminar ${data.bag.name}?") },
+        text = { Text("Se eliminarán este saco, sus gastos, sus reservas y todo su historial. Esta acción no se puede deshacer.") },
+        confirmButton = { TextButton(enabled = !busy, onClick = { vm.delete(data.bag.id) { deleteBag = false; back() } },
+            colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text(if (busy) "Eliminando…" else "Eliminar saco") } },
+        dismissButton = { TextButton(enabled = !busy, onClick = { deleteBag = false }) { Text("Cancelar") } }
+    )
     if (spending) ExpenseDialog(busy, { spending = false }) { name, icon, amount -> vm.spend(data.bag.id, name, icon, amount) { spending = false } }
+    data.expenses.find { it.id == editingExpenseId }?.let { expense ->
+        ExpenseDialog(busy, { editingExpenseId = null }, existing = expense) { name, icon, amount ->
+            vm.editExpense(expense.id, name, icon, amount) { editingExpenseId = null }
+        }
+    }
     deleting?.let { expense -> AlertDialog(onDismissRequest = { deleting = null }, title = { Text("¿Deshacer este gasto?") }, text = { Text("${expense.name}: ${euros(expense.cents)} volverán al saldo del ciclo correspondiente.") }, confirmButton = { TextButton(onClick = { vm.undo(expense.id); deleting = null }) { Text("Deshacer") } }, dismissButton = { TextButton(onClick = { deleting = null }) { Text("Cancelar") } }) }
+}
+
+@Composable
+private fun HowItWorksDialog(dismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = dismiss,
+        title = { Text("¿Cómo calcula Gaston tu presupuesto?") },
+        text = {
+            Column(
+                Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Text("1. Presupuesto Inicial del Ciclo", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text("Al comenzar el mes, Gaston descuenta tu ahorro programado y tus salidas fijas (alquiler, luz, etc.) del ingreso total para obtener el saldo realmente libre.", style = MaterialTheme.typography.bodyMedium)
+                
+                Text("2. Margen Diario ('Disponible hoy')", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text("Ese saldo libre se divide entre los días que faltan hasta tu próximo cobro. Lo que gastas HOY sólo se resta de tu cuota de hoy.", style = MaterialTheme.typography.bodyMedium)
+                
+                Text("3. Ajuste Dinámico Diario", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text("• Si ahorras hoy: El dinero que no gastes hoy aumentará tu límite diario del resto del mes.\n• Si te pasas hoy: El exceso se reparte restando una pequeña cuota de los días que faltan.", style = MaterialTheme.typography.bodyMedium)
+                
+                Text("4. Festivos y Fines de Semana", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text("Si tu día de cobro cae en sábado o domingo, el ciclo se ajusta automáticamente al siguiente lunes hábil.", style = MaterialTheme.typography.bodyMedium)
+            }
+        },
+        confirmButton = { TextButton(onClick = dismiss) { Text("Entendido") } }
+    )
 }
 
 @Composable
@@ -148,15 +345,58 @@ private fun AmountField(value: String, change: (String) -> Unit, label: String) 
 }
 @Composable
 private fun IconPicker(selected: String, change: (String) -> Unit) {
-    Column { icons.chunked(4).forEach { row -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { row.forEach { icon -> FilterChip(selected == icon, { change(icon) }, label = { Text(icon) }) } } } }
+    val scrollState = rememberScrollState()
+    val chunkSize = (icons.size + 2) / 3
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Icono seleccionado:", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = MaterialTheme.colorScheme.primaryContainer,
+                modifier = Modifier.size(36.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(selected.ifBlank { "❓" }, style = MaterialTheme.typography.titleMedium)
+                }
+            }
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            icons.chunked(chunkSize).forEach { row ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(scrollState),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    row.forEach { icon ->
+                        val isSelected = selected == icon
+                        Surface(
+                            onClick = { change(icon) },
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+                            border = BorderStroke(
+                                if (isSelected) 2.dp else 1.dp,
+                                if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
+                            ),
+                            modifier = Modifier.size(width = 48.dp, height = 40.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(icon, style = MaterialTheme.typography.titleMedium)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 @Composable
-private fun ExpenseDialog(busy: Boolean, dismiss: () -> Unit, save: (String, String, Long) -> Unit) {
-    var name by rememberSaveable { mutableStateOf("") }
-    var amount by rememberSaveable { mutableStateOf("") }
-    var icon by rememberSaveable { mutableStateOf("🛒") }
+private fun ExpenseDialog(busy: Boolean, dismiss: () -> Unit, existing: Expense? = null, save: (String, String, Long) -> Unit) {
+    var name by rememberSaveable(existing?.id) { mutableStateOf(existing?.name.orEmpty()) }
+    var amount by rememberSaveable(existing?.id) { mutableStateOf(existing?.cents?.let { java.math.BigDecimal.valueOf(it, 2).toPlainString() }.orEmpty()) }
+    var icon by rememberSaveable(existing?.id) { mutableStateOf(existing?.icon?.ifBlank { "❓" } ?: "❓") }
     val cents = Money.parse(amount)
-    AlertDialog(onDismissRequest = { if (!busy) dismiss() }, title = { Text("Sacar gemas") }, text = {
+    AlertDialog(onDismissRequest = { if (!busy) dismiss() }, title = { Text(if (existing == null) "Registrar gasto" else "Editar gasto") }, text = {
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             AmountField(amount, { amount = it }, "Importe (€)")
             OutlinedTextField(name, { name = it }, label = { Text("¿En qué lo has gastado?") }, singleLine = true)
@@ -166,62 +406,119 @@ private fun ExpenseDialog(busy: Boolean, dismiss: () -> Unit, save: (String, Str
 }
 
 @Composable
-private fun CreateBag(busy: Boolean, back: () -> Unit, save: (String, Long, Int, Long, Boolean, List<FixedCost>, Long?) -> Unit) {
-    var name by rememberSaveable { mutableStateOf("") }
-    var income by rememberSaveable { mutableStateOf("") }
-    var day by rememberSaveable { mutableStateOf("25") }
-    var saving by rememberSaveable { mutableStateOf("0") }
-    var percent by rememberSaveable { mutableStateOf(false) }
-    var opening by rememberSaveable { mutableStateOf("") }
+private fun CreateBag(busy: Boolean, back: () -> Unit, existing: BagData? = null, save: (String, Long, Int, Long, Boolean, List<FixedCost>, Long?) -> Unit) {
+    BackHandler(enabled = busy) { }
+    var name by rememberSaveable { mutableStateOf(existing?.bag?.name.orEmpty()) }
+    var income by rememberSaveable { mutableStateOf(existing?.bag?.income?.let { java.math.BigDecimal.valueOf(it, 2).toPlainString() }.orEmpty()) }
+    var day by rememberSaveable { mutableStateOf(existing?.bag?.payday?.toString() ?: "25") }
+    var saving by rememberSaveable { mutableStateOf(existing?.bag?.savingValue?.let { java.math.BigDecimal.valueOf(it, 2).toPlainString() } ?: "0") }
+    var percent by rememberSaveable { mutableStateOf(existing?.bag?.savingPercent ?: false) }
+    var opening by rememberSaveable {
+        val currentInitial = existing?.cycles?.find { LocalDate.now().toString() >= it.start && LocalDate.now().toString() < it.end }?.initial
+        mutableStateOf(currentInitial?.let { java.math.BigDecimal.valueOf(it, 2).toPlainString() }.orEmpty())
+    }
     var costName by rememberSaveable { mutableStateOf("") }
     var costAmount by rememberSaveable { mutableStateOf("") }
     var costIcon by rememberSaveable { mutableStateOf("🏠") }
+    var editingCostId by rememberSaveable { mutableStateOf<String?>(null) }
     val costs = rememberSaveable(saver = listSaver(
         save = { list -> list.flatMap { listOf(it.id, it.name, it.icon, it.cents.toString()) } },
         restore = { values -> mutableStateListOf<FixedCost>().apply {
             values.chunked(4).forEach { add(FixedCost(it[0], "", it[1], it[2], it[3].toLong())) }
         } }
-    )) { mutableStateListOf<FixedCost>() }
+    )) { mutableStateListOf<FixedCost>().apply { addAll(existing?.costs.orEmpty()) } }
     val inc = Money.parse(income)
     val sav = Money.parse(saving)
     val payday = day.toIntOrNull()
     val available = if (inc != null && sav != null && (!percent || sav <= 10000)) inc - Money.saving(inc, sav, percent) - costs.sumOf { it.cents } else null
-    val valid = name.isNotBlank() && inc != null && inc > 0 && payday != null && payday in 1..31 && available != null && available >= 0 && (opening.isBlank() || Money.parse(opening) != null) && costName.isBlank() && costAmount.isBlank()
-    Page("Nuevo saco", "Configura el dinero de este banco", back) {
+    val valid = name.isNotBlank() && inc != null && inc > 0 && payday != null && payday in 1..31 && available != null && available >= 0 && (opening.isBlank() || Money.parse(opening) != null) && costName.isBlank() && costAmount.isBlank() && editingCostId == null
+    Page(if (existing == null) "Nuevo saco" else "Editar saco", if (existing == null) "Configura tu presupuesto mensual" else "El nombre cambia ahora. El resto se aplica al siguiente ciclo; el saldo y el historial actuales se conservan.", { if (!busy) back() }) {
         OutlinedTextField(name, { name = it }, label = { Text("Nombre del banco") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
         AmountField(income, { income = it }, "Ingreso mensual (€)")
         OutlinedTextField(day, { day = it }, label = { Text("Día de cobro (1–31)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true, modifier = Modifier.fillMaxWidth())
         Text("Si cae en fin de semana, cobrarás el lunes siguiente.", style = MaterialTheme.typography.bodySmall)
         Text("Salidas fijas", style = MaterialTheme.typography.titleLarge)
-        costs.forEach { cost -> Row(verticalAlignment = Alignment.CenterVertically) { Text("${cost.icon} ${cost.name} · ${euros(cost.cents)}", Modifier.weight(1f)); TextButton(onClick = { costs.remove(cost) }) { Text("Quitar") } } }
+        costs.forEach { cost ->
+            Column {
+                Text("${cost.icon.ifBlank { "🏠" }} ${cost.name} · ${euros(cost.cents)}", style = MaterialTheme.typography.bodyLarge)
+                Row {
+                    TextButton(enabled = !busy && editingCostId == null && costName.isBlank() && costAmount.isBlank(), onClick = {
+                        editingCostId = cost.id
+                        costName = cost.name
+                        costAmount = java.math.BigDecimal.valueOf(cost.cents, 2).toPlainString()
+                        costIcon = cost.icon
+                    }) { Text("Editar") }
+                    TextButton(enabled = !busy && editingCostId != cost.id, onClick = { costs.remove(cost) }) { Text("Quitar") }
+                }
+            }
+        }
         OutlinedTextField(costName, { costName = it }, label = { Text("Concepto: alquiler, luz…") }, singleLine = true, modifier = Modifier.fillMaxWidth())
         AmountField(costAmount, { costAmount = it }, "Importe de la salida (€)")
         IconPicker(costIcon) { costIcon = it }
-        OutlinedButton(onClick = { costs.add(FixedCost(UUID.randomUUID().toString(), "", costName.trim(), costIcon, Money.parse(costAmount)!!)); costName = ""; costAmount = "" }, enabled = costName.isNotBlank() && (Money.parse(costAmount) ?: 0) > 0) { Text("+ Añadir salida") }
+        OutlinedButton(onClick = {
+            val cost = FixedCost(editingCostId ?: UUID.randomUUID().toString(), "", costName.trim(), costIcon, Money.parse(costAmount)!!)
+            val index = costs.indexOfFirst { it.id == editingCostId }
+            if (index >= 0) costs[index] = cost else costs.add(cost)
+            editingCostId = null; costName = ""; costAmount = ""
+        }, enabled = !busy && costName.isNotBlank() && (Money.parse(costAmount) ?: 0) > 0) { Text(if (editingCostId == null) "Añadir salida" else "Guardar salida") }
+        if (editingCostId != null) TextButton(enabled = !busy, onClick = { editingCostId = null; costName = ""; costAmount = "" }) { Text("Cancelar edición de salida") }
         Text("Ahorro", style = MaterialTheme.typography.titleLarge)
         Row(verticalAlignment = Alignment.CenterVertically) { Switch(percent, { percent = it }); Text(if (percent) "Porcentaje del ingreso" else "Cantidad fija", Modifier.padding(start = 12.dp)) }
         AmountField(saving, { saving = it }, if (percent) "Ahorro (%)" else "Ahorro (€)")
         Text("Disponible mensual: ${available?.let { euros(it) } ?: "—"}")
-        AmountField(opening, { opening = it }, "Disponible real hoy (€), opcional")
-        Text("Si empiezas a mitad de mes, indica lo que te queda libre después de reservar pagos y ahorro. Vacío usa el disponible mensual completo para este primer ciclo.", style = MaterialTheme.typography.bodySmall)
+        AmountField(opening, { opening = it }, if (existing == null) "Disponible real hoy (€), opcional" else "Ajustar disponible del ciclo actual (€), opcional")
+        Text(if (existing == null) "Si empiezas a mitad de mes, indica lo que te queda libre después de reservar pagos y ahorro. Vacío usa el disponible mensual completo para este primer ciclo." else "Si necesitas corregir la cantidad disponible inicial para el ciclo en curso, puedes modificar este campo.", style = MaterialTheme.typography.bodySmall)
         if (available != null && available < 0) Text("Las salidas y el ahorro superan el ingreso.", color = MaterialTheme.colorScheme.error)
-        if (costName.isNotBlank() || costAmount.isNotBlank()) Text("Añade la salida pendiente o vacía sus campos antes de crear el saco.")
-        Button(onClick = { save(name, inc!!, payday!!, sav!!, percent, costs.toList(), if (opening.isBlank()) null else Money.parse(opening)) }, enabled = valid && !busy, modifier = Modifier.fillMaxWidth()) { Text(if (busy) "Guardando…" else "Crear mi saco") }
+        if (editingCostId != null) Text("Guarda o cancela la edición de la salida antes de guardar el saco.")
+        else if (costName.isNotBlank() || costAmount.isNotBlank()) Text("Añade la salida pendiente o vacía sus campos antes de guardar.")
+        Button(onClick = { save(name, inc!!, payday!!, sav!!, percent, costs.toList(), if (opening.isBlank()) null else Money.parse(opening)) }, enabled = valid && !busy, modifier = Modifier.fillMaxWidth()) { Text(if (busy) "Guardando…" else if (existing == null) "Crear saco" else "Guardar cambios") }
     }
 }
 
 @Composable
-private fun CalendarScreen(data: BagData, today: LocalDate, back: () -> Unit) {
+private fun CalendarScreen(data: BagData, today: LocalDate, back: () -> Unit, busy: Boolean, vm: GastonViewModel) {
+    BackHandler(enabled = busy) { }
+    var editingExpenseId by rememberSaveable { mutableStateOf<String?>(null) }
+    data.expenses.find { it.id == editingExpenseId }?.let { expense ->
+        ExpenseDialog(busy, { editingExpenseId = null }, existing = expense) { name, icon, amount ->
+            vm.editExpense(expense.id, name, icon, amount) { editingExpenseId = null }
+        }
+    }
+    val cycle = data.cycles.find { today.toString() >= it.start && today.toString() < it.end }
+    if (cycle == null) {
+        Page("Calendario", data.bag.name, back) { Text("Actualizando ciclo…") }
+        return
+    }
+    val start = LocalDate.parse(cycle.start)
+    val end = LocalDate.parse(cycle.end)
+    val firstMonth = YearMonth.from(start)
+    val lastMonth = YearMonth.from(end)
     var monthText by rememberSaveable { mutableStateOf(YearMonth.from(today).toString()) }
     var selectedText by rememberSaveable { mutableStateOf(today.toString()) }
-    val month = YearMonth.parse(monthText)
-    val selected = LocalDate.parse(selectedText)
-    val nextPay = BudgetCalculator.window(today, data.bag.payday).end
-    Page("Calendario", data.bag.name, back) {
+    val month = YearMonth.parse(monthText).coerceIn(firstMonth, lastMonth)
+    val selected = LocalDate.parse(selectedText).coerceIn(start, end)
+    val allowances = remember(data, today, month, cycle) {
+        val spending = data.expenses.map { Spending(LocalDate.parse(it.date), it.cents) }
+        (1..month.lengthOfMonth()).associate { number ->
+            val date = month.atDay(number)
+            date to if (date >= start && date < end)
+                BudgetCalculator.calendarAllowance(cycle.initial, Window(start, end), today, date, spending)
+            else null
+        }
+    }
+    Page("Calendario", data.bag.name, { if (!busy) back() }) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = { monthText = month.minusMonths(1).toString() }) { Text("←") }
+            TextButton(enabled = month > firstMonth, onClick = {
+                val previous = month.minusMonths(1)
+                monthText = previous.toString()
+                selectedText = maxOf(start, previous.atDay(1)).toString()
+            }) { Text("←") }
             Text(month.format(DateTimeFormatter.ofPattern("MMMM yyyy", Spanish)))
-            TextButton(onClick = { monthText = month.plusMonths(1).toString() }) { Text("→") }
+            TextButton(enabled = month < lastMonth, onClick = {
+                val next = month.plusMonths(1)
+                monthText = next.toString()
+                selectedText = next.atDay(1).toString()
+            }) { Text("→") }
         }
         Row { listOf("L", "M", "X", "J", "V", "S", "D").forEach { Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { Text(it) } } }
         val offset = month.atDay(1).dayOfWeek.value - 1
@@ -229,22 +526,42 @@ private fun CalendarScreen(data: BagData, today: LocalDate, back: () -> Unit) {
         (0 until count).toList().chunked(7).forEach { week ->
             Row { week.forEach { index ->
                 val number = index - offset + 1
-                val date = if (number in 1..month.lengthOfMonth()) month.atDay(number) else null
-                Column(Modifier.weight(1f).height(64.dp).background(if (date == selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent, RoundedCornerShape(12.dp)).then(if (date != null) Modifier.clickable { selectedText = date.toString() } else Modifier), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                    if (date != null) { Text(number.toString(), fontWeight = if (date == today) FontWeight.Bold else FontWeight.Normal); if (date == nextPay) Text("💰") else if (data.expenses.any { it.date == date.toString() }) Text("•", color = MaterialTheme.colorScheme.primary) }
+                val date = if (number in 1..month.lengthOfMonth()) month.atDay(number).takeIf { it >= start && it <= end } else null
+                val isEnd = date == end
+                val shape = RoundedCornerShape(12.dp)
+                Column(Modifier.weight(1f).heightIn(min = 80.dp)
+                    .background(if (isEnd) MaterialTheme.colorScheme.tertiaryContainer else if (date == selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent, shape)
+                    .then(if (isEnd) Modifier.border(1.dp, MaterialTheme.colorScheme.tertiary, shape) else Modifier)
+                    .then(if (date != null) Modifier.clickable { selectedText = date.toString() } else Modifier), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                    if (date != null) {
+                        Text(number.toString(), fontWeight = if (date == today) FontWeight.Bold else FontWeight.Normal)
+                        val allowance = allowances[date]
+                        Text(if (isEnd) "Fin" else allowance?.let { java.math.BigDecimal.valueOf(it, 2).toPlainString().replace('.', ',') } ?: "—",
+                            style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            color = if (allowance != null && allowance < 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(if (!isEnd && data.expenses.any { it.date == date.toString() }) "•" else "", style = MaterialTheme.typography.labelSmall)
+                    }
                 }
             } }
         }
-        Text("💰 Próximo cobro: $nextPay")
+        Text("Fin del ciclo · ${end.format(DateTimeFormatter.ofPattern("d MMM yyyy", Spanish))}", color = MaterialTheme.colorScheme.tertiary, fontWeight = FontWeight.Medium)
         Text(selected.format(dateFormat), style = MaterialTheme.typography.titleMedium)
+        if (selected == end) {
+            Text("Cierre del ciclo actual", color = MaterialTheme.colorScheme.tertiary)
+        } else {
+        val selectedAllowance = allowances[selected]
+        val allowanceLabel = if (selected > today) "Disponible previsto" else if (selected == today) "Disponible hoy" else "Margen al cerrar el día"
+        Text("$allowanceLabel: ${selectedAllowance?.let { euros(it) } ?: "Sin presupuesto para esta fecha"}",
+            color = if (selectedAllowance != null && selectedAllowance < 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
         val expenses = data.expenses.filter { it.date == selected.toString() }
         Text("Gastado: ${euros(expenses.sumOf { it.cents })}")
-        expenses.forEach { Text("${it.icon} ${it.name} · ${euros(it.cents)}") }
+        expenses.forEach { expense ->
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("${expense.icon} ${expense.name} · ${euros(expense.cents)}", Modifier.weight(1f))
+                TextButton(enabled = !busy, onClick = { editingExpenseId = expense.id }) { Text("Editar") }
+            }
+        }
         if (expenses.isEmpty()) Text("Sin gastos registrados este día.")
-        Text("Ciclos anteriores", style = MaterialTheme.typography.titleLarge)
-        data.cycles.filter { it.end <= today.toString() }.sortedByDescending { it.start }.forEach { cycle ->
-            val spent = data.expenses.filter { it.date >= cycle.start && it.date < cycle.end }.sumOf { it.cents }
-            Text("${cycle.start} → ${cycle.end}\nSaldo al cierre: ${euros(cycle.initial - spent)}")
         }
     }
 }

@@ -25,6 +25,20 @@ data class Spending(val date: LocalDate, val cents: Long)
 data class Budget(val remaining: Long, val today: Long, val week: Long, val days: Long, val tomorrow: Long)
 
 object BudgetCalculator {
+    /** Past days show their closing allowance; future days assume the projected allowance is spent. */
+    fun calendarAllowance(initial: Long, window: Window, today: LocalDate, date: LocalDate,
+                          expenses: List<Spending>): Long {
+        require(date >= window.start && date < window.end)
+        if (date <= today) return calculate(initial, window, date, expenses).today
+        val first = maxOf(window.start, today.plusDays(1))
+        val spent = expenses.filter { it.date >= window.start && it.date <= today && it.date < window.end }.sumOf { it.cents }
+        val remaining = initial - spent
+        val days = ChronoUnit.DAYS.between(first, window.end)
+        val index = ChronoUnit.DAYS.between(first, date)
+        // Keep cents exact, assigning any remainder to the final days of the cycle.
+        return Math.floorDiv(remaining, days) + if (index >= days - Math.floorMod(remaining, days)) 1 else 0
+    }
+
     fun payday(month: YearMonth, day: Int): LocalDate {
         require(day in 1..31)
         val date = month.atDay(minOf(day, month.lengthOfMonth()))
@@ -50,8 +64,9 @@ object BudgetCalculator {
         val opening = initial - prior
         val daily = Math.floorDiv(opening, days)
         val remaining = opening - spentToday
+        val daysUntilSunday = minOf(days, (8 - today.dayOfWeek.value).toLong())
         return Budget(remaining, daily - spentToday,
-            Math.floorDiv(opening * minOf(days, 7), days) - spentToday, days,
+            Math.floorDiv(opening * daysUntilSunday, days) - spentToday, days,
             if (days > 1) Math.floorDiv(remaining, days - 1) else 0)
     }
 }

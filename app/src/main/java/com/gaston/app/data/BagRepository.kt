@@ -7,6 +7,28 @@ import java.util.UUID
 
 class BagRepository(private val db: GastonDatabase) {
     val bags = db.bags().observe()
+    suspend fun update(id: String, name: String, income: Long, day: Int, saving: Long,
+                       percent: Boolean, costs: List<FixedCost>, opening: Long? = null, today: LocalDate) = db.withTransaction {
+        require(name.isNotBlank() && income > 0 && day in 1..31)
+        require(saving >= 0 && (!percent || saving <= 10000))
+        require(costs.all { it.cents > 0 && it.name.isNotBlank() })
+        require(income - Money.saving(income, saving, percent) - costs.sumOf { it.cents } >= 0)
+        require(opening == null || opening >= 0)
+        // Close any elapsed cycles using the original settings before editing.
+        refresh(today)
+        val bagData = db.bags().all().first { it.bag.id == id }
+        db.bags().updateBag(bagData.bag.copy(name = name.trim(), income = income, payday = day,
+            savingValue = saving, savingPercent = percent))
+        db.bags().deleteCosts(id)
+        db.bags().insertCosts(costs.map { it.copy(bagId = id) })
+        if (opening != null) {
+            val activeCycle = bagData.cycles.find { today.toString() >= it.start && today.toString() < it.end }
+            if (activeCycle != null) {
+                db.bags().updateCycle(activeCycle.copy(initial = opening))
+            }
+        }
+    }
+    suspend fun delete(id: String) = db.bags().deleteBag(id)
     suspend fun create(name: String, income: Long, day: Int, saving: Long, percent: Boolean,
                        costs: List<FixedCost>, opening: Long?, today: LocalDate): String {
         require(name.isNotBlank() && income > 0 && day in 1..31)
@@ -43,4 +65,8 @@ class BagRepository(private val db: GastonDatabase) {
         db.bags().insertExpense(Expense(UUID.randomUUID().toString(), bagId, today.toString(), name.trim(), icon, cents))
     }
     suspend fun undo(id: String) = db.bags().deleteExpense(id)
+    suspend fun editExpense(id: String, name: String, icon: String, cents: Long) {
+        require(name.isNotBlank() && cents > 0)
+        check(db.bags().editExpense(id, name.trim(), icon, cents) == 1)
+    }
 }
