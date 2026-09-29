@@ -9,47 +9,39 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.unit.dp
+import kotlin.math.ceil
 
 @Composable
-fun GemBag(fraction: Float, modifier: Modifier = Modifier) {
+fun GemBag(fraction: Float, isNegative: Boolean = false, modifier: Modifier = Modifier) {
     val level by animateFloatAsState(fraction.coerceIn(0f, 1f), tween(650), label = "Contenido del saco")
-    val colors = listOf(Color(0xFF73DEB4), Color(0xFFA89AE8), Color(0xFFF4C775), Color(0xFF78C8E3))
-    Canvas(modifier.height(210.dp).fillMaxWidth().semantics {
-        contentDescription = "Saco con ${(fraction.coerceIn(0f, 1f) * 100).toInt()} por ciento del presupuesto"
+    Canvas(modifier.aspectRatio(1f).semantics {
+        contentDescription = if (isNegative) "Presupuesto agotado" else
+            "Pilas de monedas: ${(fraction.coerceIn(0f, 1f) * 100).toInt()} por ciento del presupuesto disponible"
     }) {
         val w = size.width
         val h = size.height
-        drawOval(Color(0x16000000), Offset(w * .23f, h * .9f), Size(w * .54f, h * .08f))
-        val bag = Path().apply {
-            moveTo(w * .35f, h * .19f)
-            cubicTo(w * .12f, h * .5f, w * .18f, h * .92f, w * .36f, h * .93f)
-            lineTo(w * .64f, h * .93f)
-            cubicTo(w * .82f, h * .92f, w * .88f, h * .5f, w * .65f, h * .19f)
-            close()
+        val stackHeights = listOf(1, 3, 4, 3, 1)
+        val coinSpots = stackHeights.flatMapIndexed { column, stackHeight ->
+            (0 until stackHeight).map { row -> column to row }
         }
-        drawPath(bag, Color(0xFFE0C499))
-        clipPath(bag) {
-            drawRect(Color(0xFFAF8759), Offset(0f, h * (.91f - .67f * level)), Size(w, h))
-            for (row in 0..7) for (col in 0..7) {
-                val x = w * (.23f + col * .078f + if (row % 2 == 0) 0f else .035f)
-                val y = h * (.87f - row * .083f)
-                if (y >= h * (.91f - .67f * level)) {
-                    val r = h * .045f
-                    val gem = Path().apply {
-                        moveTo(x, y-r); lineTo(x+r, y-r*.3f); lineTo(x+r*.7f,y+r*.6f)
-                        lineTo(x,y+r); lineTo(x-r*.8f,y+r*.3f); lineTo(x-r,y-r*.3f); close()
-                    }
-                    drawPath(gem, colors[(row * 3 + col) % colors.size])
-                    drawLine(Color.White.copy(alpha=.6f), Offset(x-r*.6f,y-r*.2f), Offset(x,y-r*.65f), 2f)
-                }
-            }
+        val visibleCoins = ceil(coinSpots.size * level).toInt()
+        drawOval(Color(0x1F263D38), Offset(w * .13f, h * .79f), Size(w * .74f, h * .11f))
+        coinSpots.take(visibleCoins).forEach { (column, row) ->
+            val centerX = w * (.18f + column * .16f)
+            val centerY = h * (.77f - row * .12f)
+            val coinSize = Size(w * .23f, h * .15f)
+            val topLeft = Offset(centerX - coinSize.width / 2, centerY - coinSize.height / 2)
+            drawOval(Color(0xFFB66A1E), topLeft, coinSize)
+            drawOval(Color(0xFFFFC94A), topLeft + Offset(0f, -h * .018f), coinSize)
+            drawOval(
+                Color(0xFFFFE28A),
+                topLeft + Offset(w * .035f, -h * .008f),
+                Size(coinSize.width * .7f, coinSize.height * .63f),
+                style = Stroke(width = w * .012f)
+            )
         }
-        drawOval(Color(0xFF866545), Offset(w*.32f,h*.1f), Size(w*.36f,h*.15f))
-        drawOval(Color(0xFF453C35), Offset(w*.35f,h*.13f), Size(w*.30f,h*.08f))
     }
 }

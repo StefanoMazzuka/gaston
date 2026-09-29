@@ -19,8 +19,10 @@ import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import com.gaston.app.R
+import android.view.SoundEffectConstants
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -62,18 +64,13 @@ private fun SacoGraphic(
     isNegative: Boolean,
     modifier: Modifier = Modifier
 ) {
-    Image(
-        painter = painterResource(R.drawable.bag),
-        contentDescription = if (isNegative) "Saco con saldo negativo" else
-            "Saco con ${(progress.coerceIn(0f, 1f) * 100).toInt()}% del presupuesto disponible",
-        contentScale = ContentScale.Fit,
-        modifier = modifier
-    )
+    GemBag(progress, isNegative, modifier)
 }
 
 @Composable
 fun GastonApp(vm: GastonViewModel) {
     val nav = rememberNavController()
+    val soundView = LocalView.current
     val bags by vm.bags.collectAsStateWithLifecycle()
     val error by vm.error.collectAsStateWithLifecycle()
     val busy by vm.busy.collectAsStateWithLifecycle()
@@ -91,20 +88,20 @@ fun GastonApp(vm: GastonViewModel) {
         while (true) { delay(30_000); val now = LocalDate.now(); if (now != today) { today = now; vm.refresh() } }
     }
     MaterialTheme(colorScheme = lightColorScheme(
-        primary = Color(0xFF24665D), onPrimary = Color.White,
-        primaryContainer = Color(0xFFD8EDE4), onPrimaryContainer = Color(0xFF123E36),
-        secondary = Color(0xFF735B35), onSecondary = Color.White,
-        secondaryContainer = Color(0xFFF1E4CD), onSecondaryContainer = Color(0xFF4D391D),
-        tertiary = Color(0xFF825C19), onTertiary = Color.White,
-        tertiaryContainer = Color(0xFFFFE7B5), onTertiaryContainer = Color(0xFF583D0B),
-        background = Color(0xFFF7F3EB), onBackground = Color(0xFF263D38),
-        surface = Color(0xFFFFFCF6), onSurface = Color(0xFF263D38),
-        surfaceVariant = Color(0xFFECE8DC), onSurfaceVariant = Color(0xFF5D655C),
-        surfaceContainerLowest = Color(0xFFFFFDF8), surfaceContainerLow = Color(0xFFF5F0E6),
-        surfaceContainer = Color(0xFFF0EBDF), surfaceContainerHigh = Color(0xFFEAE5D8),
-        surfaceContainerHighest = Color(0xFFE4DFD2), surfaceTint = Color(0xFF24665D),
-        outline = Color(0xFF7D857A), outlineVariant = Color(0xFFDADDCF),
-        error = Color(0xFFAD3934), onError = Color.White,
+        primary = Color(0xFF176B53), onPrimary = Color.White,
+        primaryContainer = Color(0xFFD3F1DF), onPrimaryContainer = Color(0xFF103F31),
+        secondary = Color(0xFFD96842), onSecondary = Color.White,
+        secondaryContainer = Color(0xFFFFE1D5), onSecondaryContainer = Color(0xFF632B1B),
+        tertiary = Color(0xFFE1A321), onTertiary = Color(0xFF392600),
+        tertiaryContainer = Color(0xFFFFE8AE), onTertiaryContainer = Color(0xFF523800),
+        background = Color(0xFFF3F7EE), onBackground = Color(0xFF1D392F),
+        surface = Color(0xFFFFFEF8), onSurface = Color(0xFF1D392F),
+        surfaceVariant = Color(0xFFE6EEE2), onSurfaceVariant = Color(0xFF52645A),
+        surfaceContainerLowest = Color(0xFFFFFFFF), surfaceContainerLow = Color(0xFFF7FAF3),
+        surfaceContainer = Color(0xFFEDF4E9), surfaceContainerHigh = Color(0xFFE6EEE2),
+        surfaceContainerHighest = Color(0xFFDDE8DC), surfaceTint = Color(0xFF176B53),
+        outline = Color(0xFF75877B), outlineVariant = Color(0xFFD3DED2),
+        error = Color(0xFFB63D36), onError = Color.White,
         errorContainer = Color(0xFFFFDAD5), onErrorContainer = Color(0xFF6D1716)
     )) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -114,34 +111,50 @@ fun GastonApp(vm: GastonViewModel) {
                     if (showHowItWorks) HowItWorksDialog { showHowItWorks = false }
                     Page("Sacos", "Resumen de tus presupuestos", onInfo = { showHowItWorks = true }) {
                         if (bags.isEmpty()) Section {
-                            Text("Todavía no hay sacos", style = MaterialTheme.typography.titleLarge)
-                            Text("Añade un banco y configura su presupuesto mensual.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("🏆", style = MaterialTheme.typography.displaySmall)
+                            Text("¡Tu aventura empieza aquí!", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                            Text("Crea tu primer saco y descubre cuántas monedas puedes guardar para cada día.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         bags.forEach { data ->
-                            OutlinedCard(onClick = { nav.navigate("bag/${data.bag.id}") }, modifier = Modifier.fillMaxWidth(),
+                            val budget = currentBudget(data, today)
+                            val cycle = data.cycles.find { today.toString() >= it.start && today.toString() < it.end }
+                            val progress = budget?.let { cycleProgress(it.remaining, cycle?.initial ?: 0L) } ?: 0f
+                            OutlinedCard(onClick = {
+                                soundView.playSoundEffect(SoundEffectConstants.CLICK)
+                                nav.navigate("bag/${data.bag.id}")
+                            }, modifier = Modifier.fillMaxWidth(),
                                 colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface),
                                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
-                                Row(Modifier.padding(20.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                    currentBudget(data, today)?.let { budget ->
-                                        val cycle = data.cycles.find { today.toString() >= it.start && today.toString() < it.end }
-                                        val initial = cycle?.initial ?: 0L
-                                        val progress = cycleProgress(budget.remaining, initial)
-                                        SacoGraphic(
-                                            progress = progress,
-                                            isNegative = budget.remaining < 0,
-                                            modifier = Modifier.padding(end = 16.dp).size(80.dp)
-                                        )
-                                    }
-                                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                        Text(data.bag.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Medium)
-                                        currentBudget(data, today)?.let { budget ->
-                                            Text(euros(budget.remaining), style = MaterialTheme.typography.headlineMedium)
+                                Row(Modifier.padding(16.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                    SacoGraphic(
+                                        progress = progress,
+                                        isNegative = (budget?.remaining ?: 0L) < 0,
+                                        modifier = Modifier.padding(end = 12.dp).size(76.dp)
+                                    )
+                                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                                        Text("TU TESORO", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary, fontWeight = FontWeight.Bold)
+                                        Text(data.bag.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                                        budget?.let {
+                                            Text(euros(it.remaining), style = MaterialTheme.typography.headlineSmall,
+                                                color = if (it.remaining < 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                                                fontWeight = FontWeight.Bold)
+                                            LinearProgressIndicator(
+                                                progress = { progress },
+                                                modifier = Modifier.fillMaxWidth().height(8.dp),
+                                                color = if (it.remaining < 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.tertiary,
+                                                trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                                drawStopIndicator = {}
+                                            )
+                                            Text("${(progress * 100).toInt()}% de monedas disponibles", style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant)
                                         }
                                     }
                                 }
                             }
                         }
-                        OutlinedButton(onClick = { nav.navigate("create") }, modifier = Modifier.fillMaxWidth()) { Text("Añadir saco") }
+                        Button(onClick = { nav.navigate("create") }, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp), shape = RoundedCornerShape(16.dp)) {
+                            Text("＋ Crear un saco")
+                        }
                     }
                 }
                 composable("create") { CreateBag(busy, { nav.popBackStack() }) { name, income, day, saving, percent, costs, opening ->
@@ -171,23 +184,28 @@ fun GastonApp(vm: GastonViewModel) {
 @Composable
 private fun Page(title: String, subtitle: String, back: (() -> Unit)? = null, onInfo: (() -> Unit)? = null, content: @Composable ColumnScope.() -> Unit) {
     Column(Modifier.fillMaxSize().imePadding().verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        if (back != null) TextButton(onClick = back) { Text("← Volver") }
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(title, modifier = Modifier.weight(1f), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold)
-            if (onInfo != null) IconButton(onClick = onInfo) {
-                Icon(painterResource(R.drawable.ic_info), contentDescription = "¿Cómo se calcula el presupuesto?", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (back != null) TextButton(onClick = back) { Text("← Volver a la aventura") }
+        Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.primary) {
+            Row(Modifier.padding(start = 20.dp, top = 18.dp, end = 12.dp, bottom = 18.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold,
+                        color = MaterialTheme.colorScheme.onPrimary, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onPrimary.copy(alpha = .82f))
+                }
+                if (onInfo != null) IconButton(onClick = onInfo) {
+                    Icon(painterResource(R.drawable.ic_info), contentDescription = "¿Cómo se calcula el presupuesto?", tint = MaterialTheme.colorScheme.onPrimary)
+                }
             }
         }
-        Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant)
         content()
         Spacer(Modifier.height(16.dp))
     }
 }
 @Composable
 private fun Section(content: @Composable ColumnScope.() -> Unit) {
-    Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surface,
+    Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp), content = content)
+        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp), content = content)
     }
 }
 
@@ -200,9 +218,11 @@ private fun currentBudget(data: BagData, today: LocalDate): Budget? {
 @Composable
 private fun BagScreen(data: BagData, today: LocalDate, busy: Boolean, back: () -> Unit, calendar: () -> Unit, edit: () -> Unit, vm: GastonViewModel) {
     BackHandler(enabled = busy) { }
+    val soundView = LocalView.current
     var deleteBag by rememberSaveable { mutableStateOf(false) }
     var spending by rememberSaveable { mutableStateOf(false) }
     var editingExpenseId by rememberSaveable { mutableStateOf<String?>(null) }
+    var chestOpen by rememberSaveable(data.bag.id) { mutableStateOf(false) }
     var deleting by remember { mutableStateOf<Expense?>(null) }
     val budget = currentBudget(data, today)
     val cycle = data.cycles.find { today.toString() >= it.start && today.toString() < it.end }
@@ -226,7 +246,7 @@ private fun BagScreen(data: BagData, today: LocalDate, busy: Boolean, back: () -
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("Disponible hoy", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("🪙 Monedas para hoy", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.tertiary, fontWeight = FontWeight.Bold)
                     Text(budget?.let { euros(it.today) } ?: "Actualizando…", style = MaterialTheme.typography.displaySmall,
                         color = if ((budget?.today ?: 0) < 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
                 }
@@ -246,7 +266,7 @@ private fun BagScreen(data: BagData, today: LocalDate, busy: Boolean, back: () -
                 trackColor = MaterialTheme.colorScheme.outlineVariant,
                 drawStopIndicator = {}
             )
-            Text("${maxOf(0, percent)}% disponible", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("${maxOf(0, percent)}% de tu tesoro del ciclo", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             
@@ -254,13 +274,22 @@ private fun BagScreen(data: BagData, today: LocalDate, busy: Boolean, back: () -
             Text("Fin del ciclo · ${cycle?.end ?: "…"} · ${budget?.days ?: 0} días restantes", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if ((budget?.today ?: 0) < 0) Text("Has superado el margen de hoy. El presupuesto de los próximos días se ajustará.", color = MaterialTheme.colorScheme.error)
-        Button(onClick = { spending = true }, enabled = !busy && cycle != null, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp), shape = RoundedCornerShape(12.dp)) { Text("Registrar gasto") }
-        OutlinedButton(onClick = calendar, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) { Text("Calendario e historial") }
-        Text("Últimos gastos", style = MaterialTheme.typography.titleLarge)
-        if (data.expenses.isEmpty()) Text("Tu saco todavía no tiene gastos.")
+        Button(onClick = { spending = true }, enabled = !busy && cycle != null, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp), shape = RoundedCornerShape(16.dp)) { Text("🪙 Registrar gasto") }
+        OutlinedButton(onClick = calendar, modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp), shape = RoundedCornerShape(16.dp)) { Text("📅 Calendario e historial") }
+        Text("🧾 Tus últimas compras", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        if (data.expenses.isEmpty()) Text("Aún no hay gastos. ¡Tu tesoro sigue intacto!", color = MaterialTheme.colorScheme.onSurfaceVariant)
         data.expenses.sortedByDescending { it.date }.take(10).forEach { expense ->
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("${expense.icon.ifBlank { "❓" }} ${expense.name} · ${euros(expense.cents)}", Modifier.weight(1f))
+            Row(
+                Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainerLow, RoundedCornerShape(16.dp)).padding(start = 12.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.size(40.dp)) {
+                    Box(contentAlignment = Alignment.Center) { Text(expense.icon.ifBlank { "❓" }, style = MaterialTheme.typography.titleMedium) }
+                }
+                Column(Modifier.weight(1f).padding(horizontal = 10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(expense.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(euros(expense.cents), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.Bold)
+                }
                 Row {
                     IconButton(onClick = { editingExpenseId = expense.id }, enabled = !busy) {
                         Icon(painterResource(R.drawable.ic_edit), contentDescription = "Editar ${expense.name}")
@@ -276,13 +305,32 @@ private fun BagScreen(data: BagData, today: LocalDate, busy: Boolean, back: () -
             val templateSaving = Money.saving(data.bag.income, data.bag.savingValue, data.bag.savingPercent)
             val hasPendingChange = cycleSaving != templateSaving
 
-            Text("Planificación y Ahorro", style = MaterialTheme.typography.titleMedium)
+            Text("🧰 Cofre del ahorro", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Image(
+                    painter = painterResource(if (chestOpen) R.drawable.chest_open else R.drawable.chest_close),
+                    contentDescription = if (chestOpen) "Cerrar cofre del ahorro reservado" else "Abrir cofre del ahorro reservado",
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.padding(end = 12.dp).size(88.dp).clickable {
+                        soundView.playSoundEffect(
+                            if (chestOpen) SoundEffectConstants.NAVIGATION_DOWN else SoundEffectConstants.NAVIGATION_UP
+                        )
+                        chestOpen = !chestOpen
+                    }
+                )
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("RESERVA DEL CICLO", style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.tertiary, fontWeight = FontWeight.Bold)
+                    Text(euros(cycleSaving), style = MaterialTheme.typography.titleLarge,
+                        color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                    if (hasPendingChange) {
+                        Text("Próximo ciclo · ${euros(templateSaving)}", style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.secondary)
+                    }
+                }
+            }
             if (hasPendingChange) {
-                Text("Ahorro apartado este ciclo · ${euros(cycleSaving)}", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.primary)
-                Text("Nuevo ahorro para el próximo ciclo · ${euros(templateSaving)}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.secondary)
                 Text("Has editado el saco. El nuevo ahorro entrará en vigor el ${cycle?.end ?: "próximo ciclo"}.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            } else {
-                Text("Ahorro mensual apartado · ${euros(cycleSaving)}", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
             }
             
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -303,7 +351,12 @@ private fun BagScreen(data: BagData, today: LocalDate, busy: Boolean, back: () -
             colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text(if (busy) "Eliminando…" else "Eliminar saco") } },
         dismissButton = { TextButton(enabled = !busy, onClick = { deleteBag = false }) { Text("Cancelar") } }
     )
-    if (spending) ExpenseDialog(busy, { spending = false }) { name, icon, amount -> vm.spend(data.bag.id, name, icon, amount) { spending = false } }
+    if (spending) ExpenseDialog(busy, { spending = false }) { name, icon, amount ->
+        vm.spend(data.bag.id, name, icon, amount) {
+            spending = false
+            soundView.playSoundEffect(SoundEffectConstants.NAVIGATION_DOWN)
+        }
+    }
     data.expenses.find { it.id == editingExpenseId }?.let { expense ->
         ExpenseDialog(busy, { editingExpenseId = null }, existing = expense) { name, icon, amount ->
             vm.editExpense(expense.id, name, icon, amount) { editingExpenseId = null }
@@ -432,12 +485,13 @@ private fun CreateBag(busy: Boolean, back: () -> Unit, existing: BagData? = null
     val payday = day.toIntOrNull()
     val available = if (inc != null && sav != null && (!percent || sav <= 10000)) inc - Money.saving(inc, sav, percent) - costs.sumOf { it.cents } else null
     val valid = name.isNotBlank() && inc != null && inc > 0 && payday != null && payday in 1..31 && available != null && available >= 0 && (opening.isBlank() || Money.parse(opening) != null) && costName.isBlank() && costAmount.isBlank() && editingCostId == null
-    Page(if (existing == null) "Nuevo saco" else "Editar saco", if (existing == null) "Configura tu presupuesto mensual" else "El nombre cambia ahora. El resto se aplica al siguiente ciclo; el saldo y el historial actuales se conservan.", { if (!busy) back() }) {
+    Page(if (existing == null) "Nuevo saco" else "Editar saco", if (existing == null) "Prepara tu próximo tesoro mensual" else "El nombre cambia ahora. El resto se aplica al siguiente ciclo; el saldo y el historial actuales se conservan.", { if (!busy) back() }) {
+        Text("🏁 Tu punto de partida", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         OutlinedTextField(name, { name = it }, label = { Text("Nombre del banco") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
         AmountField(income, { income = it }, "Ingreso mensual (€)")
         OutlinedTextField(day, { day = it }, label = { Text("Día de cobro (1–31)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true, modifier = Modifier.fillMaxWidth())
         Text("Si cae en fin de semana, cobrarás el lunes siguiente.", style = MaterialTheme.typography.bodySmall)
-        Text("Salidas fijas", style = MaterialTheme.typography.titleLarge)
+        Text("🏠 Pagos fijos", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         costs.forEach { cost ->
             Column {
                 Text("${cost.icon.ifBlank { "🏠" }} ${cost.name} · ${euros(cost.cents)}", style = MaterialTheme.typography.bodyLarge)
@@ -462,16 +516,16 @@ private fun CreateBag(busy: Boolean, back: () -> Unit, existing: BagData? = null
             editingCostId = null; costName = ""; costAmount = ""
         }, enabled = !busy && costName.isNotBlank() && (Money.parse(costAmount) ?: 0) > 0) { Text(if (editingCostId == null) "Añadir salida" else "Guardar salida") }
         if (editingCostId != null) TextButton(enabled = !busy, onClick = { editingCostId = null; costName = ""; costAmount = "" }) { Text("Cancelar edición de salida") }
-        Text("Ahorro", style = MaterialTheme.typography.titleLarge)
+        Text("🌱 Ahorro primero", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         Row(verticalAlignment = Alignment.CenterVertically) { Switch(percent, { percent = it }); Text(if (percent) "Porcentaje del ingreso" else "Cantidad fija", Modifier.padding(start = 12.dp)) }
         AmountField(saving, { saving = it }, if (percent) "Ahorro (%)" else "Ahorro (€)")
-        Text("Disponible mensual: ${available?.let { euros(it) } ?: "—"}")
+        Text("🪙 Disponible mensual: ${available?.let { euros(it) } ?: "—"}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
         AmountField(opening, { opening = it }, if (existing == null) "Disponible real hoy (€), opcional" else "Ajustar disponible del ciclo actual (€), opcional")
         Text(if (existing == null) "Si empiezas a mitad de mes, indica lo que te queda libre después de reservar pagos y ahorro. Vacío usa el disponible mensual completo para este primer ciclo." else "Si necesitas corregir la cantidad disponible inicial para el ciclo en curso, puedes modificar este campo.", style = MaterialTheme.typography.bodySmall)
         if (available != null && available < 0) Text("Las salidas y el ahorro superan el ingreso.", color = MaterialTheme.colorScheme.error)
         if (editingCostId != null) Text("Guarda o cancela la edición de la salida antes de guardar el saco.")
         else if (costName.isNotBlank() || costAmount.isNotBlank()) Text("Añade la salida pendiente o vacía sus campos antes de guardar.")
-        Button(onClick = { save(name, inc!!, payday!!, sav!!, percent, costs.toList(), if (opening.isBlank()) null else Money.parse(opening)) }, enabled = valid && !busy, modifier = Modifier.fillMaxWidth()) { Text(if (busy) "Guardando…" else if (existing == null) "Crear saco" else "Guardar cambios") }
+        Button(onClick = { save(name, inc!!, payday!!, sav!!, percent, costs.toList(), if (opening.isBlank()) null else Money.parse(opening)) }, enabled = valid && !busy, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp), shape = RoundedCornerShape(16.dp)) { Text(if (busy) "Guardando…" else if (existing == null) "✨ Crear mi saco" else "Guardar cambios") }
     }
 }
 
@@ -528,10 +582,10 @@ private fun CalendarScreen(data: BagData, today: LocalDate, back: () -> Unit, bu
                 val number = index - offset + 1
                 val date = if (number in 1..month.lengthOfMonth()) month.atDay(number).takeIf { it >= start && it <= end } else null
                 val isEnd = date == end
-                val shape = RoundedCornerShape(12.dp)
+                    val shape = RoundedCornerShape(14.dp)
                 Column(Modifier.weight(1f).heightIn(min = 80.dp)
-                    .background(if (isEnd) MaterialTheme.colorScheme.tertiaryContainer else if (date == selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent, shape)
-                    .then(if (isEnd) Modifier.border(1.dp, MaterialTheme.colorScheme.tertiary, shape) else Modifier)
+                        .background(if (isEnd) MaterialTheme.colorScheme.tertiaryContainer else if (date == selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent, shape)
+                        .then(if (isEnd) Modifier.border(1.dp, MaterialTheme.colorScheme.tertiary, shape) else if (date == today) Modifier.border(1.dp, MaterialTheme.colorScheme.primary, shape) else Modifier)
                     .then(if (date != null) Modifier.clickable { selectedText = date.toString() } else Modifier), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                     if (date != null) {
                         Text(number.toString(), fontWeight = if (date == today) FontWeight.Bold else FontWeight.Normal)
