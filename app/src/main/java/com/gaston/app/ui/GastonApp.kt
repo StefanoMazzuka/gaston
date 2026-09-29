@@ -693,16 +693,18 @@ private fun CreateBag(
         Text("Si cae en fin de semana, cobrarás el lunes siguiente.", style = MaterialTheme.typography.bodySmall)
         Text("🏠 Pagos fijos", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         costs.forEach { cost ->
-            Column {
-                Text("${cost.icon.ifBlank { "🏠" }} ${cost.name} · ${euros(cost.cents)}", style = MaterialTheme.typography.bodyLarge)
-                Row {
-                    TextButton(enabled = !busy && editingCostId == null && costName.isBlank() && costAmount.isBlank(), onClick = {
-                        editingCostId = cost.id
-                        costName = cost.name
-                        costAmount = java.math.BigDecimal.valueOf(cost.cents, 2).toPlainString()
-                        costIcon = cost.icon
-                    }) { Text("Editar") }
-                    TextButton(enabled = !busy && editingCostId != cost.id, onClick = { costs.remove(cost) }) { Text("Quitar") }
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("${cost.icon.ifBlank { "🏠" }} ${cost.name} · ${euros(cost.cents)}", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                IconButton(enabled = !busy && editingCostId == null && costName.isBlank() && costAmount.isBlank(), onClick = {
+                    editingCostId = cost.id
+                    costName = cost.name
+                    costAmount = java.math.BigDecimal.valueOf(cost.cents, 2).toPlainString()
+                    costIcon = cost.icon
+                }) {
+                    Icon(painterResource(R.drawable.ic_edit), contentDescription = "Editar ${cost.name}")
+                }
+                IconButton(enabled = !busy && editingCostId != cost.id, onClick = { costs.remove(cost) }) {
+                    Icon(painterResource(R.drawable.ic_close), contentDescription = "Quitar ${cost.name}", tint = MaterialTheme.colorScheme.error)
                 }
             }
         }
