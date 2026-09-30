@@ -19,7 +19,7 @@ data class Bag(
 @Entity(tableName = "fixed_costs", indices = [Index("bagId")], foreignKeys = [ForeignKey(entity = Bag::class, parentColumns = ["id"], childColumns = ["bagId"], onDelete = ForeignKey.CASCADE)])
 data class FixedCost(@PrimaryKey val id: String, val bagId: String, val name: String, val icon: String, val cents: Long)
 @Entity(tableName = "cycles", primaryKeys = ["bagId", "start"], foreignKeys = [ForeignKey(entity = Bag::class, parentColumns = ["id"], childColumns = ["bagId"], onDelete = ForeignKey.CASCADE)])
-data class Cycle(val bagId: String, val start: String, val end: String, val initial: Long, val saving: Long)
+data class Cycle(val bagId: String, val start: String, val end: String, val initial: Long, val saving: Long, val accountOpening: Long? = null, val reservedCosts: Long? = null)
 @Entity(tableName = "expenses", indices = [Index("bagId")], foreignKeys = [ForeignKey(entity = Bag::class, parentColumns = ["id"], childColumns = ["bagId"], onDelete = ForeignKey.CASCADE)])
 data class Expense(@PrimaryKey val id: String, val bagId: String, val date: String, val name: String, val icon: String, val cents: Long)
 
@@ -55,5 +55,14 @@ interface BagDao {
     suspend fun editExpense(id: String, name: String, icon: String, cents: Long): Int
     @Query("DELETE FROM expenses WHERE id = :id") suspend fun deleteExpense(id: String)
 }
-@Database(entities = [Bag::class, FixedCost::class, Cycle::class, Expense::class], version = 1, exportSchema = true)
+@Database(entities = [Bag::class, FixedCost::class, Cycle::class, Expense::class], version = 2, exportSchema = true)
 abstract class GastonDatabase : RoomDatabase() { abstract fun bags(): BagDao }
+
+val MIGRATION_1_2 = object : androidx.room.migration.Migration(1, 2) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE cycles ADD COLUMN accountOpening INTEGER")
+        db.execSQL("ALTER TABLE cycles ADD COLUMN reservedCosts INTEGER")
+    }
+}
+
+data class OpeningInput(val available: Long, val account: Long?, val costs: Long?)

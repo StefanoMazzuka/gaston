@@ -189,7 +189,7 @@ fun GastonApp(vm: GastonViewModel) {
                                         Text("TU TESORO", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary, fontWeight = FontWeight.Bold)
                                         Text(data.bag.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                                         budget?.let {
-                                            Text(euros(it.remaining), style = MaterialTheme.typography.headlineSmall,
+                                            CalculationText(euros(it.remaining), cycleMath(data, cycle, today), style = MaterialTheme.typography.headlineSmall,
                                                 color = if (it.remaining < 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
                                                 fontWeight = FontWeight.Bold)
                                             LinearProgressIndicator(
@@ -244,7 +244,7 @@ fun GastonApp(vm: GastonViewModel) {
                                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                     Text("TU COFRE DE AHORRO", style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onTertiaryContainer)
-                                    Text(euros(totalSaved), style = MaterialTheme.typography.titleLarge,
+                                    CalculationText(euros(totalSaved), treasuryMath(bags, today), style = MaterialTheme.typography.titleLarge,
                                         fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onTertiaryContainer)
                                     Text("Ver ahorro acumulado", style = MaterialTheme.typography.labelMedium,
                                         color = MaterialTheme.colorScheme.onTertiaryContainer)
@@ -346,7 +346,7 @@ private fun TreasuryScreen(bags: List<BagData>, today: LocalDate, back: () -> Un
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                     Text("TOTAL ACUMULADO", style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.tertiary)
-                    Text(euros(totalSaved), style = MaterialTheme.typography.headlineSmall,
+                    CalculationText(euros(totalSaved), treasuryMath(bags, today), style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                     Text("Ahorro restante y dinero útil sobrante al cerrar cada ciclo", style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -371,7 +371,7 @@ private fun TreasuryScreen(bags: List<BagData>, today: LocalDate, back: () -> Un
                         contentScale = ContentScale.Fit, modifier = Modifier.size(44.dp).padding(end = 8.dp))
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                         Text(data.bag.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        Text("Ahorro estimado · ${euros(currentSaving)}", style = MaterialTheme.typography.bodySmall,
+                        CalculationText("Ahorro estimado · ${euros(currentSaving)}", cycleMath(data, currentCycle, today), style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
@@ -382,15 +382,15 @@ private fun TreasuryScreen(bags: List<BagData>, today: LocalDate, back: () -> Un
                 val result = data.balance(closed, today)
                 Section {
                     Text("${closed.start} → ${closed.end}", fontWeight = FontWeight.Bold)
-                    Text("Objetivo de ahorro · ${euros(closed.saving)}")
-                    Text("Ahorro conseguido · ${euros(result.saved)}")
-                    Text(when {
+                    CalculationText("Objetivo de ahorro · ${euros(closed.saving)}", cycleMath(data, closed, today))
+                    CalculationText("Ahorro conseguido · ${euros(result.saved)}", cycleMath(data, closed, today))
+                    CalculationText(when {
                         result.differenceFromTarget > 0 -> "Superaste el objetivo en ${euros(result.differenceFromTarget)}: gastaste menos de lo previsto."
                         result.differenceFromTarget < 0 -> "Gastaste ${euros(-result.differenceFromTarget)} más de lo previsto."
                         else -> "Alcanzaste exactamente el ahorro deseado."
-                    })
-                    Text("Aportación al cofre · ${euros(result.saved)}", color = MaterialTheme.colorScheme.primary)
-                    if (result.deficit > 0) Text("Déficit del ciclo · ${euros(result.deficit)}",
+                    }, cycleMath(data, closed, today))
+                    CalculationText("Aportación al cofre · ${euros(result.saved)}", cycleMath(data, closed, today), color = MaterialTheme.colorScheme.primary)
+                    if (result.deficit > 0) CalculationText("Déficit del ciclo · ${euros(result.deficit)}", cycleMath(data, closed, today),
                         color = MaterialTheme.colorScheme.error)
                 }
             }
@@ -478,7 +478,7 @@ private fun BagScreen(data: BagData, today: LocalDate, busy: Boolean, back: () -
             ) {
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text("🪙 Monedas para hoy", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.tertiary, fontWeight = FontWeight.Bold)
-                    Text(budget?.let { euros(it.today) } ?: "Actualizando…", style = MaterialTheme.typography.displaySmall,
+                    CalculationText(budget?.let { euros(it.today) } ?: "Actualizando…", dailyMath(data, cycle, today), style = MaterialTheme.typography.displaySmall,
                         color = if ((budget?.today ?: 0) < 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
                 }
                 Image(painterResource(coinDrawable), contentDescription = if (todayRemaining < 0) "Presupuesto diario superado" else "Monedas restantes de hoy",
@@ -494,7 +494,7 @@ private fun BagScreen(data: BagData, today: LocalDate, busy: Boolean, back: () -
                 trackColor = MaterialTheme.colorScheme.outlineVariant,
                 drawStopIndicator = {}
             )
-            Text("Disponible · ${euros(remaining.coerceAtLeast(0))}",
+            CalculationText("Disponible · ${euros(remaining.coerceAtLeast(0))}", cycleMath(data, cycle, today),
                 style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
             Text("Fin del ciclo · ${cycle?.end ?: "…"} · ${budget?.days ?: 0} días restantes", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
@@ -548,19 +548,19 @@ private fun BagScreen(data: BagData, today: LocalDate, busy: Boolean, back: () -
                 val hasPendingChange = cycleSaving != templateSaving
 
                 Text("🌱 Plan de ahorro", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Text("Ahorro deseado este ciclo · ${euros(cycleSaving)}", style = MaterialTheme.typography.titleMedium,
+                CalculationText("Ahorro deseado este ciclo · ${euros(cycleSaving)}", cycleMath(data, cycle, today), style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                 cycle?.let {
                     val balance = data.balance(it, today)
-                    Text("Ahorro estimado restante · ${euros(balance.savingRemaining)}")
-                    if (balance.savingConsumed > 0) Text("Has utilizado ${euros(balance.savingConsumed)} del ahorro deseado.",
+                    CalculationText("Ahorro estimado restante · ${euros(balance.savingRemaining)}", cycleMath(data, cycle, today))
+                    if (balance.savingConsumed > 0) CalculationText("Has utilizado ${euros(balance.savingConsumed)} del ahorro deseado.", cycleMath(data, cycle, today),
                         color = MaterialTheme.colorScheme.error)
-                    if (balance.deficit > 0) Text("Déficit del ciclo · ${euros(balance.deficit)}",
+                    if (balance.deficit > 0) CalculationText("Déficit del ciclo · ${euros(balance.deficit)}", cycleMath(data, cycle, today),
                         color = MaterialTheme.colorScheme.error)
-                    Text("Si no gastas más, al cerrar irán ${euros(balance.saved)} al cofre.",
+                    CalculationText("Si no gastas más, al cerrar irán ${euros(balance.saved)} al cofre.", cycleMath(data, cycle, today),
                         style = MaterialTheme.typography.bodySmall)
                 }
-                if (hasPendingChange) Text("Próximo ciclo · ${euros(templateSaving)}", style = MaterialTheme.typography.bodyMedium,
+                if (hasPendingChange) CalculationText("Próximo ciclo · ${euros(templateSaving)}", "Ingreso ${euros(data.bag.income)}; ahorro configurado: ${if (data.bag.savingPercent) java.math.BigDecimal.valueOf(data.bag.savingValue, 2).toPlainString() + " %" else euros(data.bag.savingValue)} = ${euros(templateSaving)}.", style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.secondary)
                 if (hasPendingChange) {
                     Text("Has editado el saco. El nuevo ahorro entrará en vigor el ${cycle?.end ?: "próximo ciclo"}.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -718,7 +718,7 @@ private fun CreateBag(
     back: () -> Unit,
     existing: BagData? = null,
     onDelete: (() -> Unit)? = null,
-    save: (String, Long, Int, Long, Boolean, List<FixedCost>, Long?) -> Unit
+    save: (String, Long, Int, Long, Boolean, List<FixedCost>, OpeningInput?) -> Unit
 ) {
     BackHandler(enabled = busy) { }
     var showDeleteConfirmation by rememberSaveable(existing?.bag?.id) { mutableStateOf(false) }
@@ -727,11 +727,10 @@ private fun CreateBag(
     var day by rememberSaveable { mutableStateOf(existing?.bag?.payday?.toString() ?: "25") }
     var saving by rememberSaveable { mutableStateOf(existing?.bag?.savingValue?.let { java.math.BigDecimal.valueOf(it, 2).toPlainString() } ?: "0") }
     var percent by rememberSaveable { mutableStateOf(existing?.bag?.savingPercent ?: false) }
-    var opening by rememberSaveable {
-        val currentInitial = existing?.cycles?.find { LocalDate.now().toString() >= it.start && LocalDate.now().toString() < it.end }?.initial
-        mutableStateOf(currentInitial?.let { java.math.BigDecimal.valueOf(it, 2).toPlainString() }.orEmpty())
-    }
-    var accountBalance by rememberSaveable { mutableStateOf("") }
+    val activeCycle = existing?.cycles?.find { LocalDate.now().toString() >= it.start && LocalDate.now().toString() < it.end }
+    var opening by rememberSaveable { mutableStateOf(activeCycle?.initial?.let { java.math.BigDecimal.valueOf(it, 2).toPlainString() }.orEmpty()) }
+    var accountBalance by rememberSaveable { mutableStateOf(activeCycle?.accountOpening?.let { java.math.BigDecimal.valueOf(it, 2).toPlainString() }.orEmpty()) }
+    var legacyReservedCosts by rememberSaveable { mutableStateOf("") }
     val paidCostIds = rememberSaveable(saver = listSaver(
         save = { it.toList() },
         restore = { mutableStateListOf<String>().apply { addAll(it) } }
@@ -754,13 +753,21 @@ private fun CreateBag(
     val pendingCosts = costs.filter { it.id !in paidCostIds }.sumOf { it.cents }
     val firstAvailable = if (currentBalance != null && inc != null && sav != null && (!percent || sav <= 10000))
         currentBalance - pendingCosts - Money.saving(inc, sav, percent) else null
+    val restoredCosts = Money.parse(legacyReservedCosts)
+    val restoringOpening = existing != null && activeCycle?.accountOpening == null && (accountBalance.isNotBlank() || legacyReservedCosts.isNotBlank())
     val openingValid = if (existing == null) firstAvailable != null && firstAvailable >= 0
+        else if (activeCycle?.reservedCosts != null) currentBalance != null && currentBalance >= activeCycle.reservedCosts + activeCycle.saving
+        else if (restoringOpening) currentBalance != null && restoredCosts != null && activeCycle != null && currentBalance >= restoredCosts + activeCycle.saving
         else opening.isBlank() || Money.parse(opening) != null
     val valid = name.isNotBlank() && inc != null && inc > 0 && payday != null && payday in 1..31 && available != null && available >= 0 && openingValid && costName.isBlank() && costAmount.isBlank() && editingCostId == null
     Page(if (existing == null) "Nuevo saco" else "Editar saco", { if (!busy) back() }) {
         Text("🏁 Tu punto de partida", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         OutlinedTextField(name, { name = it }, label = { Text("Nombre del banco") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-        if (existing == null) AmountField(accountBalance, { accountBalance = it }, "Saldo actual en cuenta (€)")
+        AmountField(accountBalance, { accountBalance = it }, "Saldo inicial en cuenta (€)")
+        if (existing != null && activeCycle?.accountOpening == null) {
+            Text("Este ciclo antiguo no guardó el saldo original. Puedes completar ambos campos o dejarlos vacíos para conservar el disponible guardado.", style = MaterialTheme.typography.bodySmall)
+            AmountField(legacyReservedCosts, { legacyReservedCosts = it }, "Pagos reservados al inicio del ciclo (€)")
+        }
         AmountField(income, { income = it }, "Ingreso mensual (€)")
         OutlinedTextField(day, { day = it }, label = { Text("Día de cobro (1–31)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true, modifier = Modifier.fillMaxWidth())
         Text("Si cae en fin de semana, cobrarás el lunes siguiente.", style = MaterialTheme.typography.bodySmall)
@@ -805,21 +812,30 @@ private fun CreateBag(
         Text("🌱 Ahorro primero", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         Row(verticalAlignment = Alignment.CenterVertically) { Switch(percent, { percent = it }); Text(if (percent) "Porcentaje del ingreso" else "Cantidad fija", Modifier.padding(start = 12.dp)) }
         AmountField(saving, { saving = it }, if (percent) "Ahorro (%)" else "Ahorro (€)")
-        Text("🪙 Disponible mensual: ${available?.let { euros(it) } ?: "—"}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+        CalculationText("🪙 Disponible mensual: ${available?.let { euros(it) } ?: "—"}", "Ingreso ${inc?.let { euros(it) } ?: "—"} − pagos fijos ${euros(costs.sumOf { it.cents })} − ahorro ${if (inc != null && sav != null) euros(Money.saving(inc, sav, percent)) else "—"} = ${available?.let { euros(it) } ?: "—"}.", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
         if (existing == null) {
-            Text("Pagos pendientes · ${euros(pendingCosts)}", style = MaterialTheme.typography.bodyMedium)
-            Text("Disponible hasta el próximo cobro · ${firstAvailable?.let { euros(it) } ?: "—"}",
+            CalculationText("Pagos pendientes · ${euros(pendingCosts)}", costs.joinToString("\n") { "${it.name}: ${euros(it.cents)} · ${if (it.id in paidCostIds) "ya cobrado, no se resta" else "pendiente"}" } + "\nTotal pendiente: ${euros(pendingCosts)}", style = MaterialTheme.typography.bodyMedium)
+            CalculationText("Disponible hasta el próximo cobro · ${firstAvailable?.let { euros(it) } ?: "—"}", "Saldo inicial ${currentBalance?.let { euros(it) } ?: "—"} − pendientes ${euros(pendingCosts)} − ahorro ${if (inc != null && sav != null) euros(Money.saving(inc, sav, percent)) else "—"} = ${firstAvailable?.let { euros(it) } ?: "—"}.",
                 style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Text("Saldo actual menos pagos pendientes y ahorro. El ingreso mensual se aplicará en el próximo ciclo, reservando entonces todos los pagos fijos.", style = MaterialTheme.typography.bodySmall)
             if (firstAvailable != null && firstAvailable < 0) Text("El saldo actual no cubre los pagos pendientes y el ahorro. Revisa los importes o los pagos ya cobrados.", color = MaterialTheme.colorScheme.error)
-        } else {
+        } else if (activeCycle?.accountOpening != null && activeCycle.reservedCosts != null) {
+            val adjusted = currentBalance?.minus(activeCycle.reservedCosts)?.minus(activeCycle.saving)
+            CalculationText("Disponible inicial del ciclo · ${adjusted?.let { euros(it) } ?: "—"}",
+                "Saldo inicial ${currentBalance?.let { euros(it) } ?: "—"} − pagos reservados ${euros(activeCycle.reservedCosts)} − ahorro ${euros(activeCycle.saving)} = ${adjusted?.let { euros(it) } ?: "—"}. Los gastos registrados se restan después.")
+            Text("Corregir el saldo inicial ajusta este ciclo. Los cambios de ingresos, gastos fijos y ahorro se aplican al siguiente.", style = MaterialTheme.typography.bodySmall)
+            if (adjusted != null && adjusted < 0) Text("El saldo inicial no cubre las reservas del ciclo.", color = MaterialTheme.colorScheme.error)
+        } else if (activeCycle?.accountOpening == null) {
             AmountField(opening, { opening = it }, "Ajustar disponible del ciclo actual (€), opcional")
             Text("Si necesitas corregir la cantidad disponible inicial para el ciclo en curso, puedes modificar este campo.", style = MaterialTheme.typography.bodySmall)
         }
         if (available != null && available < 0) Text("Las salidas y el ahorro superan el ingreso.", color = MaterialTheme.colorScheme.error)
         if (editingCostId != null) Text("Guarda o cancela la edición de la salida antes de guardar el saco.")
         else if (costName.isNotBlank() || costAmount.isNotBlank()) Text("Añade la salida pendiente o vacía sus campos antes de guardar.")
-        Button(onClick = { save(name, inc!!, payday!!, sav!!, percent, costs.toList(), if (existing == null) firstAvailable else if (opening.isBlank()) null else Money.parse(opening)) }, enabled = valid && !busy, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp), shape = RoundedCornerShape(16.dp)) { Text(if (busy) "Guardando…" else if (existing == null) "✨ Crear mi saco" else "Guardar cambios") }
+        Button(onClick = { save(name, inc!!, payday!!, sav!!, percent, costs.toList(), if (existing == null) OpeningInput(firstAvailable!!, currentBalance, pendingCosts)
+            else if (activeCycle?.reservedCosts != null) OpeningInput(currentBalance!! - activeCycle.reservedCosts - activeCycle.saving, currentBalance, activeCycle.reservedCosts)
+            else if (restoringOpening) OpeningInput(currentBalance!! - restoredCosts!! - activeCycle!!.saving, currentBalance, restoredCosts)
+            else if (opening.isBlank()) null else OpeningInput(Money.parse(opening)!!, null, null)) }, enabled = valid && !busy, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp), shape = RoundedCornerShape(16.dp)) { Text(if (busy) "Guardando…" else if (existing == null) "✨ Crear mi saco" else "Guardar cambios") }
         if (onDelete != null) {
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             TextButton(
@@ -958,7 +974,7 @@ private fun CalendarScreen(data: BagData, today: LocalDate, back: () -> Unit, bu
                             Text(date.format(DateTimeFormatter.ofPattern("EEE", Spanish)).uppercase(Spanish),
                                 style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                             Text(date.dayOfMonth.toString(), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
-                            Text(if (isEnd) "🏁" else allowance?.let { euros(it) } ?: "—",
+                            CalculationText(if (isEnd) "🏁" else allowance?.let { euros(it) } ?: "—", calendarMath(data, cycle, today, date), onSelect = { selectedText = date.toString() },
                                 style = MaterialTheme.typography.labelMedium,
                                 color = if (allowance != null && allowance < 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
                             Text(if (date == today) "HOY" else if (data.expenses.any { it.date == date.toString() }) "•" else " ",
@@ -996,7 +1012,7 @@ private fun CalendarScreen(data: BagData, today: LocalDate, back: () -> Unit, bu
                             if (date == today) Text("HOY", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.Bold)
                             Text(number.toString(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold)
                             val allowance = allowances[date]
-                            Text(if (isEnd) "🏁" else allowance?.let { java.math.BigDecimal.valueOf(it, 2).toPlainString().replace('.', ',') } ?: "—",
+                            CalculationText(if (isEnd) "🏁" else allowance?.let { java.math.BigDecimal.valueOf(it, 2).toPlainString().replace('.', ',') } ?: "—", calendarMath(data, cycle, today, date), onSelect = { selectedText = date.toString() },
                                 style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis,
                                 color = if (allowance != null && allowance < 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
                             if (!isEnd && data.expenses.any { it.date == date.toString() }) Text("🪙", style = MaterialTheme.typography.labelSmall)

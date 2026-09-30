@@ -12,7 +12,7 @@ import kotlinx.coroutines.CancellationException
 import java.time.LocalDate
 
 class GastonViewModel(app: Application) : AndroidViewModel(app) {
-    private val db = Room.databaseBuilder(app, GastonDatabase::class.java, "gaston.db").build()
+    private val db = Room.databaseBuilder(app, GastonDatabase::class.java, "gaston.db").addMigrations(MIGRATION_1_2).build()
     private val repository = BagRepository(db)
     val bags = repository.bags.stateIn<List<BagData>?>(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
     private val preferences = app.getSharedPreferences("gaston_preferences", Context.MODE_PRIVATE)
@@ -32,8 +32,8 @@ class GastonViewModel(app: Application) : AndroidViewModel(app) {
     val busy = MutableStateFlow(false)
     fun refresh() { viewModelScope.launch { try { repository.refresh(LocalDate.now()) } catch (e: Exception) { if (e is CancellationException) throw e; error.value = "No se pudieron actualizar los sacos." } } }
     fun create(name: String, income: Long, day: Int, saving: Long, percent: Boolean,
-               costs: List<FixedCost>, opening: Long?, done: (String) -> Unit) = action {
-        done(repository.create(name, income, day, saving, percent, costs, opening, LocalDate.now()))
+               costs: List<FixedCost>, opening: OpeningInput?, done: (String) -> Unit) = action {
+        done(repository.create(name, income, day, saving, percent, costs, opening?.available, LocalDate.now(), opening))
     }
     fun spend(id: String, name: String, icon: String, cents: Long, done: () -> Unit) = action {
         repository.spend(id, name, icon, cents, LocalDate.now()); done()
@@ -44,8 +44,8 @@ class GastonViewModel(app: Application) : AndroidViewModel(app) {
         done()
     }
     fun update(id: String, name: String, income: Long, day: Int, saving: Long, percent: Boolean,
-               costs: List<FixedCost>, opening: Long? = null, done: () -> Unit) = action {
-        repository.update(id, name, income, day, saving, percent, costs, opening, LocalDate.now())
+               costs: List<FixedCost>, opening: OpeningInput? = null, done: () -> Unit) = action {
+        repository.update(id, name, income, day, saving, percent, costs, opening?.available, LocalDate.now(), opening)
         done()
     }
     fun delete(id: String, done: () -> Unit) = action {
