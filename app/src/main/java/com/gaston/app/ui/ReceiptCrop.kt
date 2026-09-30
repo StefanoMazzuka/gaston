@@ -11,6 +11,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -84,7 +85,7 @@ internal fun ReceiptCrop(path: String, cancel: () -> Unit, whole: () -> Unit, cr
                 val left = if (image != null) (viewport.width - image.width * scale) / 2 + offset.x else 0f
                 val top = if (image != null) (viewport.height - image.height * scale) / 2 + offset.y else 0f
                 val imageBitmap = remember(image) { image?.asImageBitmap() }
-                Canvas(Modifier.fillMaxWidth().weight(1f).onSizeChanged { viewport = it }
+                Canvas(Modifier.fillMaxWidth().weight(1f).clipToBounds().onSizeChanged { viewport = it }
                     .pointerInput(image, viewport, frameHeight, saving) {
                         detectTransformGestures { _, movement, factor, _ ->
                             if (!saving && image != null) {
@@ -109,8 +110,6 @@ internal fun ReceiptCrop(path: String, cancel: () -> Unit, whole: () -> Unit, cr
                 }
                 if (image == null && error == null) LinearProgressIndicator(Modifier.fillMaxWidth())
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                Text("Zoom")
-                Slider(value = zoom, onValueChange = { zoom = it; pan = Offset.Zero }, valueRange = 1f..8f, enabled = !saving && image != null)
                 Text("Altura del recuadro")
                 Slider(value = frameHeight, onValueChange = { frameHeight = it; pan = Offset.Zero }, valueRange = .12f.. .8f, enabled = !saving && image != null)
                 Button(enabled = !saving && image != null && viewport.width > 0 && viewport.height > 0, modifier = Modifier.fillMaxWidth(), onClick = {
