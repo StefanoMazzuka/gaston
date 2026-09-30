@@ -473,6 +473,24 @@ private fun BagScreen(data: BagData, today: LocalDate, busy: Boolean, back: () -
     var deleting by remember { mutableStateOf<Expense?>(null) }
     val budget = currentBudget(data, today)
     val cycle = data.cycles.find { today.toString() >= it.start && today.toString() < it.end }
+    // Recover today's opening allowance, keeping today's spending out of the denominator.
+    val spentToday = data.expenses.filter { it.date == today.toString() }.sumOf { it.cents }
+    val todayRemaining = budget?.today ?: 0L
+    val todayOpening = todayRemaining + spentToday
+    val coinLevel = when {
+        todayRemaining < 0 -> 0
+        todayOpening <= 0 -> 25
+        todayRemaining.toDouble() / todayOpening < 0.25 -> 25
+        todayRemaining.toDouble() / todayOpening < 0.50 -> 50
+        todayRemaining.toDouble() / todayOpening < 0.75 -> 75
+        else -> 100
+    }
+    val coinDrawable = remember(context, coinLevel) {
+        // The custom PNGs can be added later; keep the existing image until then.
+        @Suppress("DiscouragedApi")
+        val resource = context.resources.getIdentifier("coins_$coinLevel", "drawable", context.packageName)
+        resource.takeIf { it != 0 } ?: R.drawable.coins
+    }
     Page(data.bag.name, today.format(dateFormat), { if (!busy) back() },
         onInfo = { showBagInfo = true }, infoDescription = "Información y plan de ahorro del saco") {
         Section {
@@ -490,7 +508,7 @@ private fun BagScreen(data: BagData, today: LocalDate, busy: Boolean, back: () -
                     Text(budget?.let { euros(it.today) } ?: "Actualizando…", style = MaterialTheme.typography.displaySmall,
                         color = if ((budget?.today ?: 0) < 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
                 }
-                Image(painterResource(R.drawable.coins), contentDescription = "Montaña de monedas",
+                Image(painterResource(coinDrawable), contentDescription = if (todayRemaining < 0) "Presupuesto diario superado" else "Monedas restantes de hoy",
                     contentScale = ContentScale.Fit, modifier = Modifier.padding(start = 12.dp).size(76.dp))
             }
             
@@ -740,6 +758,11 @@ private fun CreateBag(
         val currentInitial = existing?.cycles?.find { LocalDate.now().toString() >= it.start && LocalDate.now().toString() < it.end }?.initial
         mutableStateOf(currentInitial?.let { java.math.BigDecimal.valueOf(it, 2).toPlainString() }.orEmpty())
     }
+    var accountBalance by rememberSaveable { mutableStateOf("") }
+    val paidCostIds = rememberSaveable(saver = listSaver(
+        save = { it.toList() },
+        restore = { mutableStateListOf<String>().apply { addAll(it) } }
+    )) { mutableStateListOf<String>() }
     var costName by rememberSaveable { mutableStateOf("") }
     var costAmount by rememberSaveable { mutableStateOf("") }
     var costIcon by rememberSaveable { mutableStateOf("🏠") }
@@ -754,14 +777,22 @@ private fun CreateBag(
     val sav = Money.parse(saving)
     val payday = day.toIntOrNull()
     val available = if (inc != null && sav != null && (!percent || sav <= 10000)) inc - Money.saving(inc, sav, percent) - costs.sumOf { it.cents } else null
-    val valid = name.isNotBlank() && inc != null && inc > 0 && payday != null && payday in 1..31 && available != null && available >= 0 && (opening.isBlank() || Money.parse(opening) != null) && costName.isBlank() && costAmount.isBlank() && editingCostId == null
+    val currentBalance = Money.parse(accountBalance)
+    val pendingCosts = costs.filter { it.id !in paidCostIds }.sumOf { it.cents }
+    val firstAvailable = if (currentBalance != null && inc != null && sav != null && (!percent || sav <= 10000))
+        currentBalance - pendingCosts - Money.saving(inc, sav, percent) else null
+    val openingValid = if (existing == null) firstAvailable != null && firstAvailable >= 0
+        else opening.isBlank() || Money.parse(opening) != null
+    val valid = name.isNotBlank() && inc != null && inc > 0 && payday != null && payday in 1..31 && available != null && available >= 0 && openingValid && costName.isBlank() && costAmount.isBlank() && editingCostId == null
     Page(if (existing == null) "Nuevo saco" else "Editar saco", if (existing == null) "Prepara tu próximo tesoro mensual" else "El nombre cambia ahora. El resto se aplica al siguiente ciclo; el saldo y el historial actuales se conservan.", { if (!busy) back() }) {
         Text("🏁 Tu punto de partida", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         OutlinedTextField(name, { name = it }, label = { Text("Nombre del banco") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+        if (existing == null) AmountField(accountBalance, { accountBalance = it }, "Saldo actual en cuenta (€)")
         AmountField(income, { income = it }, "Ingreso mensual (€)")
         OutlinedTextField(day, { day = it }, label = { Text("Día de cobro (1–31)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true, modifier = Modifier.fillMaxWidth())
         Text("Si cae en fin de semana, cobrarás el lunes siguiente.", style = MaterialTheme.typography.bodySmall)
         Text("🏠 Pagos fijos", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        if (existing == null) Text("Marca los pagos que ya se han cobrado este ciclo. Solo reservaremos los pendientes.", style = MaterialTheme.typography.bodySmall)
         costs.forEach { cost ->
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text("${cost.icon.ifBlank { "🏠" }} ${cost.name} · ${euros(cost.cents)}", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
@@ -773,9 +804,16 @@ private fun CreateBag(
                 }) {
                     Icon(painterResource(R.drawable.ic_edit), contentDescription = "Editar ${cost.name}")
                 }
-                IconButton(enabled = !busy && editingCostId != cost.id, onClick = { costs.remove(cost) }) {
+                IconButton(enabled = !busy && editingCostId != cost.id, onClick = { costs.remove(cost); paidCostIds.remove(cost.id) }) {
                     Icon(painterResource(R.drawable.ic_close), contentDescription = "Quitar ${cost.name}", tint = MaterialTheme.colorScheme.error)
                 }
+            }
+            if (existing == null) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(checked = cost.id in paidCostIds, enabled = !busy, onCheckedChange = { checked ->
+                    if (checked) { if (cost.id !in paidCostIds) paidCostIds.add(cost.id) }
+                    else paidCostIds.remove(cost.id)
+                })
+                Text("Ya cobrado · ${cost.name}", style = MaterialTheme.typography.bodySmall)
             }
         }
         OutlinedTextField(costName, { costName = it }, label = { Text("Concepto: alquiler, luz…") }, singleLine = true, modifier = Modifier.fillMaxWidth())
@@ -795,12 +833,20 @@ private fun CreateBag(
         Row(verticalAlignment = Alignment.CenterVertically) { Switch(percent, { percent = it }); Text(if (percent) "Porcentaje del ingreso" else "Cantidad fija", Modifier.padding(start = 12.dp)) }
         AmountField(saving, { saving = it }, if (percent) "Ahorro (%)" else "Ahorro (€)")
         Text("🪙 Disponible mensual: ${available?.let { euros(it) } ?: "—"}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-        AmountField(opening, { opening = it }, if (existing == null) "Disponible real hoy (€), opcional" else "Ajustar disponible del ciclo actual (€), opcional")
-        Text(if (existing == null) "Si empiezas a mitad de mes, indica lo que te queda libre después de reservar pagos y ahorro. Vacío usa el disponible mensual completo para este primer ciclo." else "Si necesitas corregir la cantidad disponible inicial para el ciclo en curso, puedes modificar este campo.", style = MaterialTheme.typography.bodySmall)
+        if (existing == null) {
+            Text("Pagos pendientes · ${euros(pendingCosts)}", style = MaterialTheme.typography.bodyMedium)
+            Text("Disponible hasta el próximo cobro · ${firstAvailable?.let { euros(it) } ?: "—"}",
+                style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text("Saldo actual menos pagos pendientes y ahorro. El ingreso mensual se aplicará en el próximo ciclo, reservando entonces todos los pagos fijos.", style = MaterialTheme.typography.bodySmall)
+            if (firstAvailable != null && firstAvailable < 0) Text("El saldo actual no cubre los pagos pendientes y el ahorro. Revisa los importes o los pagos ya cobrados.", color = MaterialTheme.colorScheme.error)
+        } else {
+            AmountField(opening, { opening = it }, "Ajustar disponible del ciclo actual (€), opcional")
+            Text("Si necesitas corregir la cantidad disponible inicial para el ciclo en curso, puedes modificar este campo.", style = MaterialTheme.typography.bodySmall)
+        }
         if (available != null && available < 0) Text("Las salidas y el ahorro superan el ingreso.", color = MaterialTheme.colorScheme.error)
         if (editingCostId != null) Text("Guarda o cancela la edición de la salida antes de guardar el saco.")
         else if (costName.isNotBlank() || costAmount.isNotBlank()) Text("Añade la salida pendiente o vacía sus campos antes de guardar.")
-        Button(onClick = { save(name, inc!!, payday!!, sav!!, percent, costs.toList(), if (opening.isBlank()) null else Money.parse(opening)) }, enabled = valid && !busy, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp), shape = RoundedCornerShape(16.dp)) { Text(if (busy) "Guardando…" else if (existing == null) "✨ Crear mi saco" else "Guardar cambios") }
+        Button(onClick = { save(name, inc!!, payday!!, sav!!, percent, costs.toList(), if (existing == null) firstAvailable else if (opening.isBlank()) null else Money.parse(opening)) }, enabled = valid && !busy, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp), shape = RoundedCornerShape(16.dp)) { Text(if (busy) "Guardando…" else if (existing == null) "✨ Crear mi saco" else "Guardar cambios") }
         if (onDelete != null) {
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             TextButton(
