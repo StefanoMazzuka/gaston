@@ -141,34 +141,10 @@ fun GastonApp(vm: GastonViewModel) {
         errorContainer = Color(0xFFFFDAD5), onErrorContainer = Color(0xFF6D1716)
     )) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-            val backStackEntry by nav.currentBackStackEntryAsState()
-            val selectedTab = backStackEntry?.destination?.route
+            val backToMenu: () -> Unit = { nav.popBackStack("bags", inclusive = false) }
             Scaffold(
                 modifier = Modifier.safeDrawingPadding(),
-                containerColor = MaterialTheme.colorScheme.background,
-                bottomBar = {
-                    if (selectedTab == "bags" || selectedTab == "treasury") {
-                        NavigationBar {
-                            NavigationBarItem(
-                                selected = selectedTab == "bags",
-                                onClick = { if (selectedTab != "bags") nav.popBackStack("bags", inclusive = false) },
-                                icon = { Image(painterResource(R.drawable.bag), contentDescription = null, modifier = Modifier.size(24.dp)) },
-                                label = { Text("Sacos") }
-                            )
-                            NavigationBarItem(
-                                selected = selectedTab == "treasury",
-                                onClick = {
-                                    if (selectedTab != "treasury") {
-                                        playUiSound(context, R.raw.chest_open)
-                                        nav.navigate("treasury") { launchSingleTop = true }
-                                    }
-                                },
-                                icon = { Image(painterResource(if (selectedTab == "treasury") R.drawable.chest_open else R.drawable.chest_close), contentDescription = null, modifier = Modifier.size(24.dp)) },
-                                label = { Text("Ahorro") }
-                            )
-                        }
-                    }
-                }
+                containerColor = MaterialTheme.colorScheme.background
             ) { contentPadding ->
             NavHost(nav, "bags", Modifier.padding(contentPadding)) {
                 composable("bags") {
@@ -187,7 +163,7 @@ fun GastonApp(vm: GastonViewModel) {
                     var showHowItWorks by rememberSaveable { mutableStateOf(false) }
                     if (showHowItWorks) HowItWorksDialog { showHowItWorks = false }
                     val totalSaved = bags.sumOf { it.treasury(today) }
-                    Page("Sacos", "Resumen de tus presupuestos", onInfo = { showHowItWorks = true }) {
+                    Page("Sacos", onInfo = { showHowItWorks = true }) {
                         if (bags.isEmpty()) Section {
                             Text("🏆", style = MaterialTheme.typography.displaySmall)
                             Text("¡Tu aventura empieza aquí!", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
@@ -298,10 +274,10 @@ fun GastonApp(vm: GastonViewModel) {
                 }
                 composable("bag/{id}") { entry ->
                     val data = bags.find { it.bag.id == entry.arguments?.getString("id") }
-                    if (data != null) BagScreen(data, today, busy, { nav.popBackStack() }, { nav.navigate("calendar/${data.bag.id}") }, vm)
+                    if (data != null) BagScreen(data, today, busy, backToMenu, { nav.navigate("calendar/${data.bag.id}") }, vm)
                     else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
                 }
-                composable("treasury") { TreasuryScreen(bags, today) }
+                composable("treasury") { TreasuryScreen(bags, today, backToMenu) }
                 composable("calendar/{id}") { entry ->
                     val data = bags.find { it.bag.id == entry.arguments?.getString("id") }
                     if (data != null) CalendarScreen(data, today, { nav.popBackStack() }, busy, vm)
@@ -316,20 +292,18 @@ fun GastonApp(vm: GastonViewModel) {
 @Composable
 private fun Page(
     title: String,
-    subtitle: String,
     back: (() -> Unit)? = null,
     onInfo: (() -> Unit)? = null,
     infoDescription: String = "¿Cómo se calcula el presupuesto?",
     content: @Composable ColumnScope.() -> Unit
 ) {
     Column(Modifier.fillMaxSize().imePadding().verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        if (back != null) TextButton(onClick = back) { Text("← Volver a la aventura") }
+        if (back != null) TextButton(onClick = back) { Text("← Volver", style = MaterialTheme.typography.labelMedium) }
         Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.primary) {
             Row(Modifier.padding(start = 20.dp, top = 18.dp, end = 12.dp, bottom = 18.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                     Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold,
                         color = MaterialTheme.colorScheme.onPrimary, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onPrimary.copy(alpha = .82f))
                 }
                 if (onInfo != null) IconButton(onClick = onInfo) {
                     Icon(painterResource(R.drawable.ic_info), contentDescription = infoDescription, tint = MaterialTheme.colorScheme.onPrimary)
@@ -355,14 +329,14 @@ private fun currentBudget(data: BagData, today: LocalDate): Budget? {
 }
 
 @Composable
-private fun TreasuryScreen(bags: List<BagData>, today: LocalDate) {
+private fun TreasuryScreen(bags: List<BagData>, today: LocalDate, back: () -> Unit) {
     var showSavingsInfo by rememberSaveable { mutableStateOf(false) }
     val todayText = today.toString()
     val totalSaved = bags.sumOf { it.treasury(today) }
     if (showSavingsInfo) SavingsInfoDialog { showSavingsInfo = false }
     Page(
         "Tu cofre",
-        "Ahorro real de tus ciclos cerrados",
+        back = back,
         onInfo = { showSavingsInfo = true },
         infoDescription = "Cómo funciona la pestaña del cofre de ahorro"
     ) {
@@ -489,9 +463,9 @@ private fun BagScreen(data: BagData, today: LocalDate, busy: Boolean, back: () -
         // The custom PNGs can be added later; keep the existing image until then.
         @Suppress("DiscouragedApi")
         val resource = context.resources.getIdentifier("coins_$coinLevel", "drawable", context.packageName)
-        resource.takeIf { it != 0 } ?: R.drawable.coins
+        resource.takeIf { it != 0 } ?: R.drawable.coins_100
     }
-    Page(data.bag.name, today.format(dateFormat), { if (!busy) back() },
+    Page(data.bag.name, { if (!busy) back() },
         onInfo = { showBagInfo = true }, infoDescription = "Información y plan de ahorro del saco") {
         Section {
             val initial = cycle?.initial ?: 0L
@@ -784,7 +758,7 @@ private fun CreateBag(
     val openingValid = if (existing == null) firstAvailable != null && firstAvailable >= 0
         else opening.isBlank() || Money.parse(opening) != null
     val valid = name.isNotBlank() && inc != null && inc > 0 && payday != null && payday in 1..31 && available != null && available >= 0 && openingValid && costName.isBlank() && costAmount.isBlank() && editingCostId == null
-    Page(if (existing == null) "Nuevo saco" else "Editar saco", if (existing == null) "Prepara tu próximo tesoro mensual" else "El nombre cambia ahora. El resto se aplica al siguiente ciclo; el saldo y el historial actuales se conservan.", { if (!busy) back() }) {
+    Page(if (existing == null) "Nuevo saco" else "Editar saco", { if (!busy) back() }) {
         Text("🏁 Tu punto de partida", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         OutlinedTextField(name, { name = it }, label = { Text("Nombre del banco") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
         if (existing == null) AmountField(accountBalance, { accountBalance = it }, "Saldo actual en cuenta (€)")
@@ -887,7 +861,7 @@ private fun CalendarScreen(data: BagData, today: LocalDate, back: () -> Unit, bu
     }
     val cycle = data.cycles.find { today.toString() >= it.start && today.toString() < it.end }
     if (cycle == null) {
-        Page("Calendario", data.bag.name, back) { Text("Actualizando ciclo…") }
+        Page("Calendario", back) { Text("Actualizando ciclo…") }
         return
     }
     val start = LocalDate.parse(cycle.start)
@@ -911,7 +885,7 @@ private fun CalendarScreen(data: BagData, today: LocalDate, back: () -> Unit, bu
             else null
         }
     }
-    Page("Calendario", data.bag.name, { if (!busy) back() }) {
+    Page("Calendario", { if (!busy) back() }) {
         SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
             SegmentedButton(
                 selected = weekOnly,
