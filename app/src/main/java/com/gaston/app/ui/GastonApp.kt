@@ -58,7 +58,6 @@ private fun playUiSound(context: Context, resourceId: Int) {
     player.start()
 }
 
-private val dateFormat = DateTimeFormatter.ofPattern("EEEE d 'de' MMMM", Spanish)
 private data class ExpenseCategory(val name: String, val icon: String)
 private val expenseCategories = listOf(
     ExpenseCategory("Compra", "🛒"),
