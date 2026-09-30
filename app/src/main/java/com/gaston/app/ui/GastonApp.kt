@@ -19,6 +19,8 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -60,30 +62,31 @@ private fun playUiSound(context: Context, resourceId: Int) {
 
 private data class ExpenseCategory(val name: String, val icon: String)
 private val expenseCategories = listOf(
-    ExpenseCategory("Compra", "🛒"),
-    ExpenseCategory("Supermercado", "🛍️"),
-    ExpenseCategory("Hogar", "🏠"),
+    ExpenseCategory("Otros", "❓"),
+    ExpenseCategory("Supermercado", "🛒"),
+    ExpenseCategory("Compras", "🛍️"),
     ExpenseCategory("Luz", "💡"),
     ExpenseCategory("Suscripciones", "📺"),
-    ExpenseCategory("Salud", "❤️"),
     ExpenseCategory("Transporte", "🚌"),
     ExpenseCategory("Café", "☕"),
     ExpenseCategory("Regalos", "🎁"),
-    ExpenseCategory("Comida", "🍕"),
     ExpenseCategory("Comida rápida", "🍔"),
-    ExpenseCategory("Panadería", "🥖"),
     ExpenseCategory("Internet", "📶"),
     ExpenseCategory("Agua", "💧"),
-    ExpenseCategory("Gasolina", "⛽"),
+    ExpenseCategory("Comida", "🍕"),
+    ExpenseCategory("Salud", "❤️"),
+    ExpenseCategory("Farmacia", "💊"),
+    ExpenseCategory("Panadería", "🥖"),
+    ExpenseCategory("Hogar", "🏠"),
+    ExpenseCategory("Videojuegos", "🎮"),
     ExpenseCategory("Coche", "🚗"),
     ExpenseCategory("Taxi", "🚕"),
     ExpenseCategory("Viajes", "✈️"),
-    ExpenseCategory("Farmacia", "💊"),
     ExpenseCategory("Deporte", "🏋️"),
     ExpenseCategory("Peluquería", "✂️"),
     ExpenseCategory("Ropa", "👗"),
     ExpenseCategory("Ocio", "🎬"),
-    ExpenseCategory("Videojuegos", "🎮"),
+    ExpenseCategory("Gasolina", "⛽"),
     ExpenseCategory("Mascotas", "🐶"),
     ExpenseCategory("Bebé", "👶"),
     ExpenseCategory("Trabajo", "💼"),
@@ -91,7 +94,7 @@ private val expenseCategories = listOf(
     ExpenseCategory("Banco", "🏦"),
     ExpenseCategory("Reparaciones", "🔧"),
     ExpenseCategory("Envíos", "📦"),
-    ExpenseCategory("Otros", "❓")
+    ExpenseCategory("Teléfono", "📱"),
 )
 
 private fun cycleProgress(remaining: Long, initial: Long): Float {
@@ -630,26 +633,10 @@ private fun AmountField(value: String, change: (String) -> Unit, label: String) 
 private fun IconPicker(selected: String, change: (String) -> Unit) {
     val scrollState = rememberScrollState()
     val chunkSize = (expenseCategories.size + 2) / 3
-    val selectedCategory = expenseCategories.firstOrNull { it.icon == selected }
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Concepto: ${selectedCategory?.name ?: "Personalizado"}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Surface(
-                shape = RoundedCornerShape(8.dp),
-                color = MaterialTheme.colorScheme.primaryContainer,
-                modifier = Modifier.size(36.dp)
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Text(selected.ifBlank { "❓" }, style = MaterialTheme.typography.titleMedium)
-                }
-            }
-        }
+    Box(Modifier.fillMaxWidth().horizontalScroll(scrollState)) {
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             expenseCategories.chunked(chunkSize).forEach { row ->
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(scrollState),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     row.forEach { category ->
@@ -662,12 +649,10 @@ private fun IconPicker(selected: String, change: (String) -> Unit) {
                                 if (isSelected) 2.dp else 1.dp,
                                 if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
                             ),
-                            modifier = Modifier.size(width = 88.dp, height = 60.dp)
+                            modifier = Modifier.size(48.dp).semantics { contentDescription = category.name }
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                                 Text(category.icon, style = MaterialTheme.typography.titleMedium)
-                                Text(category.name, style = MaterialTheme.typography.labelSmall, maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                             }
                         }
                     }
