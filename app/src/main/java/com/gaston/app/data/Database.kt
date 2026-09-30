@@ -2,6 +2,9 @@ package com.gaston.app.data
 
 import androidx.room.*
 import kotlinx.coroutines.flow.Flow
+import com.gaston.app.domain.CycleBalance
+import com.gaston.app.domain.SavingsCalculator
+import java.time.LocalDate
 
 @Entity(tableName = "bags")
 data class Bag(
@@ -26,6 +29,16 @@ data class BagData(
     @Relation(parentColumn = "id", entityColumn = "bagId") val cycles: List<Cycle>,
     @Relation(parentColumn = "id", entityColumn = "bagId") val expenses: List<Expense>
 )
+/** Derived from recorded expenses so edits and undo also update closed cycles. */
+fun BagData.balance(cycle: Cycle, through: LocalDate): CycleBalance =
+    SavingsCalculator.calculate(cycle.initial, cycle.saving, expenses.filter {
+        it.date >= cycle.start && it.date < cycle.end && it.date <= through.toString()
+    }.sumOf { it.cents })
+
+fun BagData.treasury(today: LocalDate): Long = cycles
+    .filter { it.end <= today.toString() }
+    .sumOf { balance(it, today).saved }
+
 @Dao
 interface BagDao {
     @Transaction @Query("SELECT * FROM bags ORDER BY rowid") fun observe(): Flow<List<BagData>>

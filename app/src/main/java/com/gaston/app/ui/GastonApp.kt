@@ -104,7 +104,10 @@ private fun cycleProgress(remaining: Long, initial: Long): Float {
 fun GastonApp(vm: GastonViewModel) {
     val nav = rememberNavController()
     val context = LocalContext.current
-    val bags by vm.bags.collectAsStateWithLifecycle()
+    val loadedBags by vm.bags.collectAsStateWithLifecycle()
+    val bags = loadedBags.orEmpty()
+    val favoriteBagId by vm.favoriteBagId.collectAsStateWithLifecycle()
+    var startupHandled by rememberSaveable { mutableStateOf(false) }
     val error by vm.error.collectAsStateWithLifecycle()
     val busy by vm.busy.collectAsStateWithLifecycle()
     var today by remember { mutableStateOf(LocalDate.now()) }
@@ -169,10 +172,21 @@ fun GastonApp(vm: GastonViewModel) {
             ) { contentPadding ->
             NavHost(nav, "bags", Modifier.padding(contentPadding)) {
                 composable("bags") {
+                    LaunchedEffect(loadedBags) {
+                        if (!startupHandled && loadedBags != null) {
+                            startupHandled = true
+                            bags.firstOrNull { it.bag.id == favoriteBagId }?.let {
+                                nav.navigate("bag/${it.bag.id}") { launchSingleTop = true }
+                            }
+                        }
+                    }
+                    if (!startupHandled) {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                        return@composable
+                    }
                     var showHowItWorks by rememberSaveable { mutableStateOf(false) }
                     if (showHowItWorks) HowItWorksDialog { showHowItWorks = false }
-                    val todayText = today.toString()
-                    val totalReserved = bags.sumOf { bag -> bag.cycles.filter { it.start <= todayText }.sumOf { it.saving } }
+                    val totalSaved = bags.sumOf { it.treasury(today) }
                     Page("Sacos", "Resumen de tus presupuestos", onInfo = { showHowItWorks = true }) {
                         if (bags.isEmpty()) Section {
                             Text("🏆", style = MaterialTheme.typography.displaySmall)
@@ -218,6 +232,17 @@ fun GastonApp(vm: GastonViewModel) {
                                         modifier = Modifier.align(Alignment.Top),
                                         horizontalAlignment = Alignment.CenterHorizontally
                                     ) {
+                                        IconToggleButton(
+                                            checked = favoriteBagId == data.bag.id,
+                                            onCheckedChange = { vm.toggleFavorite(data.bag.id) },
+                                            enabled = !busy
+                                        ) {
+                                            Icon(
+                                                painterResource(if (favoriteBagId == data.bag.id) R.drawable.ic_star_filled else R.drawable.ic_star_outline),
+                                                contentDescription = if (favoriteBagId == data.bag.id) "Quitar ${data.bag.name} de favorito" else "Abrir ${data.bag.name} al iniciar la app",
+                                                tint = if (favoriteBagId == data.bag.id) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
                                         IconButton(
                                             onClick = { nav.navigate("edit/${data.bag.id}") },
                                             enabled = !busy,
@@ -244,9 +269,9 @@ fun GastonApp(vm: GastonViewModel) {
                                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                     Text("TU COFRE DE AHORRO", style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onTertiaryContainer)
-                                    Text(euros(totalReserved), style = MaterialTheme.typography.titleLarge,
+                                    Text(euros(totalSaved), style = MaterialTheme.typography.titleLarge,
                                         fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onTertiaryContainer)
-                                    Text("Ver ahorro reservado", style = MaterialTheme.typography.labelMedium,
+                                    Text("Ver ahorro acumulado", style = MaterialTheme.typography.labelMedium,
                                         color = MaterialTheme.colorScheme.onTertiaryContainer)
                                 }
                             }
@@ -333,11 +358,11 @@ private fun currentBudget(data: BagData, today: LocalDate): Budget? {
 private fun TreasuryScreen(bags: List<BagData>, today: LocalDate) {
     var showSavingsInfo by rememberSaveable { mutableStateOf(false) }
     val todayText = today.toString()
-    val totalReserved = bags.sumOf { data -> data.cycles.filter { it.start <= todayText }.sumOf { it.saving } }
+    val totalSaved = bags.sumOf { it.treasury(today) }
     if (showSavingsInfo) SavingsInfoDialog { showSavingsInfo = false }
     Page(
         "Tu cofre",
-        "Ahorro reservado en tus sacos",
+        "Ahorro real de tus ciclos cerrados",
         onInfo = { showSavingsInfo = true },
         infoDescription = "Cómo funciona la pestaña del cofre de ahorro"
     ) {
@@ -346,11 +371,11 @@ private fun TreasuryScreen(bags: List<BagData>, today: LocalDate) {
                 Image(painterResource(R.drawable.chest_open), contentDescription = "Cofre de ahorro abierto",
                     contentScale = ContentScale.Fit, modifier = Modifier.size(104.dp).padding(end = 12.dp))
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                    Text("TOTAL RESERVADO", style = MaterialTheme.typography.labelSmall,
+                    Text("TOTAL ACUMULADO", style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.tertiary)
-                    Text(euros(totalReserved), style = MaterialTheme.typography.headlineSmall,
+                    Text(euros(totalSaved), style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                    Text("Suma del ahorro previsto en tus ciclos registrados", style = MaterialTheme.typography.bodySmall,
+                    Text("Ahorro restante y dinero útil sobrante al cerrar cada ciclo", style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
@@ -363,9 +388,10 @@ private fun TreasuryScreen(bags: List<BagData>, today: LocalDate) {
             Text("Crea un saco para empezar a llenar tu cofre.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         bags.forEach { data ->
-            val savedCycles = data.cycles.filter { it.start <= todayText }
-            val total = savedCycles.sumOf { it.saving }
-            val currentSaving = data.cycles.find { todayText >= it.start && todayText < it.end }?.saving ?: 0L
+            val savedCycles = data.cycles.filter { it.end <= todayText }.sortedByDescending { it.end }
+            val total = data.treasury(today)
+            val currentCycle = data.cycles.find { todayText >= it.start && todayText < it.end }
+            val currentSaving = currentCycle?.let { data.balance(it, today).savingRemaining } ?: 0L
             OutlinedCard(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -376,15 +402,33 @@ private fun TreasuryScreen(bags: List<BagData>, today: LocalDate) {
                         contentScale = ContentScale.Fit, modifier = Modifier.size(44.dp).padding(end = 8.dp))
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                         Text(data.bag.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        Text("Este ciclo · ${euros(currentSaving)}", style = MaterialTheme.typography.bodySmall,
+                        Text("Ahorro restante del ciclo · ${euros(currentSaving)}", style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Text(euros(total), style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                 }
             }
+            if (savedCycles.isEmpty()) Text("El primer depósito llegará al cerrar tu ciclo.",
+                style = MaterialTheme.typography.bodySmall)
+            savedCycles.forEach { closed ->
+                val result = data.balance(closed, today)
+                Section {
+                    Text("${closed.start} → ${closed.end}", fontWeight = FontWeight.Bold)
+                    Text("Objetivo de ahorro · ${euros(closed.saving)}")
+                    Text("Ahorro conseguido · ${euros(result.saved)}")
+                    Text(when {
+                        result.differenceFromTarget > 0 -> "Superaste el objetivo en ${euros(result.differenceFromTarget)}: gastaste menos de lo previsto."
+                        result.differenceFromTarget < 0 -> "Gastaste ${euros(-result.differenceFromTarget)} más de lo previsto."
+                        else -> "Alcanzaste exactamente el ahorro deseado."
+                    })
+                    Text("Aportación al cofre · ${euros(result.saved)}", color = MaterialTheme.colorScheme.primary)
+                    if (result.deficit > 0) Text("Déficit del ciclo · ${euros(result.deficit)}",
+                        color = MaterialTheme.colorScheme.error)
+                }
+            }
         }
-        Text("Importes calculados a partir del ahorro reservado en cada ciclo; no se registran retiradas del cofre.",
+        Text("El cofre comienza en cero y acumula los saldos positivos de ciclos cerrados. Los déficits se muestran por separado. Corregir un gasto anterior actualiza su cierre.",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         CreatorCredit()
     }
@@ -414,9 +458,9 @@ private fun SavingsInfoDialog(dismiss: () -> Unit) {
         title = { Text("Cómo funciona el cofre de ahorro") },
         text = {
             Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Cada saco reserva una cantidad para ahorrar durante cada ciclo. Cuando termina un ciclo y se crea el siguiente, la nueva reserva se añade al total del cofre.")
-                Text("En “Ahorro por saco”, el importe grande suma las reservas de los ciclos ya iniciados. “Este ciclo” muestra cuánto se ha reservado para el ciclo actual.")
-                Text("Importante: hoy se cuentan cantidades planificadas; la app no comprueba si se alcanzó la meta ni registra retiradas. El total es una previsión de ahorro, no un saldo bancario confirmado.",
+                Text("Los gastos consumen primero el dinero útil. Cuando se agota, reducen el ahorro estimado del ciclo.")
+                Text("El cofre empieza en cero. Al cerrar cada ciclo se añade el ahorro restante junto con el dinero útil sobrante. El ahorro del ciclo en curso sigue fuera del cofre.")
+                Text("Cada cierre compara el ahorro conseguido con el objetivo y muestra si gastaste más o menos de lo previsto. Si gastas también toda la reserva, verás el déficit del ciclo por separado.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         },
@@ -429,11 +473,13 @@ private fun BagScreen(data: BagData, today: LocalDate, busy: Boolean, back: () -
     BackHandler(enabled = busy) { }
     val context = LocalContext.current
     var spending by rememberSaveable { mutableStateOf(false) }
+    var showBagInfo by rememberSaveable { mutableStateOf(false) }
     var editingExpenseId by rememberSaveable { mutableStateOf<String?>(null) }
     var deleting by remember { mutableStateOf<Expense?>(null) }
     val budget = currentBudget(data, today)
     val cycle = data.cycles.find { today.toString() >= it.start && today.toString() < it.end }
-    Page(data.bag.name, today.format(dateFormat), { if (!busy) back() }) {
+    Page(data.bag.name, today.format(dateFormat), { if (!busy) back() },
+        onInfo = { showBagInfo = true }, infoDescription = "Información y plan de ahorro del saco") {
         Section {
             val initial = cycle?.initial ?: 0L
             val remaining = budget?.remaining ?: 0L
@@ -467,10 +513,16 @@ private fun BagScreen(data: BagData, today: LocalDate, busy: Boolean, back: () -
             
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             
+            Text("Dinero útil restante · ${euros((budget?.remaining ?: 0).coerceAtLeast(0))}")
+            if ((budget?.days ?: 0) > 1) Text("Desde mañana · ${euros(budget?.tomorrow ?: 0)} al día si hoy no gastas más")
             Text("Hasta el domingo · ${euros(budget?.week ?: 0)}")
             Text("Fin del ciclo · ${cycle?.end ?: "…"} · ${budget?.days ?: 0} días restantes", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        if ((budget?.today ?: 0) < 0) Text("Has superado el margen de hoy. El presupuesto de los próximos días se ajustará.", color = MaterialTheme.colorScheme.error)
+        if ((budget?.today ?: 0) < 0) Text(
+            if ((budget?.days ?: 0) > 1) "Has superado el margen de hoy. El presupuesto de los próximos días ya se ha ajustado."
+            else "Has superado el margen de hoy. Este gasto se reflejará en el ahorro al cerrar el ciclo.",
+            color = MaterialTheme.colorScheme.error)
+
         Button(onClick = { spending = true }, enabled = !busy && cycle != null, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp), shape = RoundedCornerShape(16.dp)) { Text("🪙 Registrar gasto") }
         OutlinedButton(onClick = calendar, modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp), shape = RoundedCornerShape(16.dp)) { Text("📅 Calendario e historial") }
         Text("🧾 Tus últimos gastos", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
@@ -497,30 +549,49 @@ private fun BagScreen(data: BagData, today: LocalDate, busy: Boolean, back: () -
                 }
             }
         }
-        Section {
-            val cycleSaving = cycle?.saving ?: 0L
-            val templateSaving = Money.saving(data.bag.income, data.bag.savingValue, data.bag.savingPercent)
-            val hasPendingChange = cycleSaving != templateSaving
-
-            Text("🌱 Plan de ahorro", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            Text("Ahorro reservado este ciclo · ${euros(cycleSaving)}", style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-            if (hasPendingChange) Text("Próximo ciclo · ${euros(templateSaving)}", style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.secondary)
-            if (hasPendingChange) {
-                Text("Has editado el saco. El nuevo ahorro entrará en vigor el ${cycle?.end ?: "próximo ciclo"}.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            
-            Text("Configuración base", style = MaterialTheme.typography.titleMedium)
-            Text("Ingreso mensual · ${euros(data.bag.income)}")
-            if (data.costs.isNotEmpty()) {
-                Text("Salidas fijas mensuales:", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
-                data.costs.forEach { Text("  • ${it.icon.ifBlank { "🏠" }} ${it.name}: ${euros(it.cents)}", style = MaterialTheme.typography.bodyMedium) }
-            }
-        }
     }
+    if (showBagInfo) AlertDialog(
+        onDismissRequest = { showBagInfo = false },
+        title = { Text("Información del saco") },
+        text = {
+            Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                val cycleSaving = cycle?.saving ?: 0L
+                val templateSaving = Money.saving(data.bag.income, data.bag.savingValue, data.bag.savingPercent)
+                val hasPendingChange = cycleSaving != templateSaving
+
+                Text("🌱 Plan de ahorro", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text("Ahorro deseado este ciclo · ${euros(cycleSaving)}", style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                cycle?.let {
+                    val balance = data.balance(it, today)
+                    Text("Ahorro estimado restante · ${euros(balance.savingRemaining)}")
+                    if (balance.savingConsumed > 0) Text("Has utilizado ${euros(balance.savingConsumed)} del ahorro deseado.",
+                        color = MaterialTheme.colorScheme.error)
+                    if (balance.deficit > 0) Text("Déficit del ciclo · ${euros(balance.deficit)}",
+                        color = MaterialTheme.colorScheme.error)
+                    Text("Si no gastas más, al cerrar irán ${euros(balance.saved)} al cofre.",
+                        style = MaterialTheme.typography.bodySmall)
+                }
+                if (hasPendingChange) Text("Próximo ciclo · ${euros(templateSaving)}", style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.secondary)
+                if (hasPendingChange) {
+                    Text("Has editado el saco. El nuevo ahorro entrará en vigor el ${cycle?.end ?: "próximo ciclo"}.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            
+                Text("Configuración base", style = MaterialTheme.typography.titleMedium)
+                Text("Ingreso mensual · ${euros(data.bag.income)}")
+                if (data.costs.isNotEmpty()) {
+                    Text("Salidas fijas mensuales:", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                    data.costs.forEach { Text("  • ${it.icon.ifBlank { "🏠" }} ${it.name}: ${euros(it.cents)}", style = MaterialTheme.typography.bodyMedium) }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = { showBagInfo = false }) { Text("Cerrar") } }
+    )
+
     if (spending) ExpenseDialog(busy, { spending = false }) { name, icon, amount ->
         vm.spend(data.bag.id, name, icon, amount) {
             spending = false
@@ -549,12 +620,14 @@ private fun HowItWorksDialog(dismiss: () -> Unit) {
                 Text("Al comenzar el mes, Gaston descuenta tu ahorro programado y tus salidas fijas (alquiler, luz, etc.) del ingreso total para obtener el saldo realmente libre.", style = MaterialTheme.typography.bodyMedium)
                 
                 Text("2. Margen Diario ('Disponible hoy')", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Text("Ese saldo libre se divide entre los días que faltan hasta tu próximo cobro. Lo que gastas HOY sólo se resta de tu cuota de hoy.", style = MaterialTheme.typography.bodyMedium)
+                Text("Ese saldo libre se divide entre los días que faltan hasta tu próximo cobro. Cada gasto reduce el dinero útil restante y el margen de hoy. Hoy cuenta en el reparto; el día de cobro pertenece al siguiente ciclo.", style = MaterialTheme.typography.bodyMedium)
                 
                 Text("3. Ajuste Dinámico Diario", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Text("• Si ahorras hoy: El dinero que no gastes hoy aumentará tu límite diario del resto del mes.\n• Si te pasas hoy: El exceso se reparte restando una pequeña cuota de los días que faltan.", style = MaterialTheme.typography.bodyMedium)
                 
-                Text("4. Festivos y Fines de Semana", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text("4. Ahorro y cofre", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text("Si agotas el dinero útil, los gastos reducen el ahorro estimado. Al cerrar el ciclo, el ahorro restante y el dinero útil sobrante pasan al cofre y se comparan con tu objetivo. Los pagos fijos ya están descontados: registra aquí solo gastos adicionales.")
+                Text("5. Fines de semana", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Text("Si tu día de cobro cae en sábado o domingo, el ciclo se ajusta automáticamente al siguiente lunes hábil.", style = MaterialTheme.typography.bodyMedium)
             }
         },
@@ -809,7 +882,7 @@ private fun CalendarScreen(data: BagData, today: LocalDate, back: () -> Unit, bu
             ) { Text("Mes") }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            TextButton(enabled = if (weekOnly) selected.minusWeeks(1) >= start else month > firstMonth, onClick = {
+            TextButton(enabled = if (weekOnly) weekStart > start else month > firstMonth, onClick = {
                 if (weekOnly) {
                     selectedText = maxOf(start, selected.minusWeeks(1)).toString()
                     monthText = YearMonth.from(LocalDate.parse(selectedText)).toString()
@@ -827,7 +900,7 @@ private fun CalendarScreen(data: BagData, today: LocalDate, back: () -> Unit, bu
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold
             )
-            TextButton(enabled = if (weekOnly) selected.plusWeeks(1) <= end else month < lastMonth, onClick = {
+            TextButton(enabled = if (weekOnly) weekStart.plusDays(6) < end else month < lastMonth, onClick = {
                 if (weekOnly) {
                     selectedText = minOf(end, selected.plusWeeks(1)).toString()
                     monthText = YearMonth.from(LocalDate.parse(selectedText)).toString()
@@ -839,45 +912,41 @@ private fun CalendarScreen(data: BagData, today: LocalDate, back: () -> Unit, bu
             }) { Text("→") }
         }
         if (weekOnly) {
-            weekDates.forEach { date ->
-                val isEnd = date == end
-                val expenses = data.expenses.filter { it.date == date.toString() }
-                val allowance = allowances[date]
-                val cardColor = when {
-                    isEnd -> MaterialTheme.colorScheme.tertiaryContainer
-                    date == selected -> MaterialTheme.colorScheme.primaryContainer
-                    date == today -> MaterialTheme.colorScheme.secondaryContainer
-                    else -> MaterialTheme.colorScheme.surface
-                }
-                OutlinedCard(
-                    onClick = { selectedText = date.toString() },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.outlinedCardColors(containerColor = cardColor),
-                    border = BorderStroke(
-                        if (date == selected || isEnd) 1.5.dp else 1.dp,
-                        if (isEnd) MaterialTheme.colorScheme.tertiary else if (date == selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
-                    )
-                ) {
-                    Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                weekDates.forEach { date ->
+                    val isEnd = date == end
+                    val allowance = allowances[date]
+                    val cardColor = when {
+                        date == selected -> MaterialTheme.colorScheme.primaryContainer
+                        isEnd -> MaterialTheme.colorScheme.tertiaryContainer
+                        date == today -> MaterialTheme.colorScheme.secondaryContainer
+                        else -> MaterialTheme.colorScheme.surface
+                    }
+                    OutlinedCard(
+                        onClick = { selectedText = date.toString() },
+                        modifier = Modifier.widthIn(min = 80.dp),
+                        colors = CardDefaults.outlinedCardColors(containerColor = cardColor),
+                        border = BorderStroke(
+                            if (date == selected) 2.dp else 1.dp,
+                            if (date == selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
+                        )
+                    ) {
                         Column(
-                            Modifier.width(64.dp).heightIn(min = 58.dp),
+                            Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
                             Text(date.format(DateTimeFormatter.ofPattern("EEE", Spanish)).uppercase(Spanish),
                                 style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                             Text(date.dayOfMonth.toString(), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
-                        }
-                        Column(Modifier.weight(1f).padding(start = 10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                            Text(
-                                if (isEnd) "🏁 Cierre del ciclo" else allowance?.let { "🪙 ${euros(it)} disponibles" } ?: "Sin presupuesto",
-                                style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold,
-                                color = if (allowance != null && allowance < 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
-                            )
-                            Text(
-                                if (expenses.isEmpty()) "✨ Sin gastos" else "🛍 ${expenses.size} ${if (expenses.size == 1) "gasto" else "gastos"}",
-                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            Text(if (isEnd) "🏁" else allowance?.let { euros(it) } ?: "—",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = if (allowance != null && allowance < 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
+                            Text(if (date == today) "HOY" else if (data.expenses.any { it.date == date.toString() }) "•" else " ",
+                                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
                         }
                     }
                 }
@@ -920,24 +989,13 @@ private fun CalendarScreen(data: BagData, today: LocalDate, back: () -> Unit, bu
                 } }
             }
         }
-        Text("Fin del ciclo · ${end.format(DateTimeFormatter.ofPattern("d MMM yyyy", Spanish))}", color = MaterialTheme.colorScheme.tertiary, fontWeight = FontWeight.Medium)
-        Text(selected.format(dateFormat), style = MaterialTheme.typography.titleMedium)
-        if (selected == end) {
-            Text("Cierre del ciclo actual", color = MaterialTheme.colorScheme.tertiary)
-        } else {
-        val selectedAllowance = allowances[selected]
-        val allowanceLabel = if (selected > today) "Disponible previsto" else if (selected == today) "Disponible hoy" else "Margen al cerrar el día"
-        Text("$allowanceLabel: ${selectedAllowance?.let { euros(it) } ?: "Sin presupuesto para esta fecha"}",
-            color = if (selectedAllowance != null && selectedAllowance < 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
         val expenses = data.expenses.filter { it.date == selected.toString() }
-        Text("Gastado: ${euros(expenses.sumOf { it.cents })}")
         expenses.forEach { expense ->
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text("${expense.icon} ${expense.name} · ${euros(expense.cents)}", Modifier.weight(1f))
                 TextButton(enabled = !busy, onClick = { editingExpenseId = expense.id }) { Text("Editar") }
             }
         }
-        if (expenses.isEmpty()) Text("Sin gastos registrados este día.")
-        }
+        if (expenses.isEmpty()) Text("Sin gastos", color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

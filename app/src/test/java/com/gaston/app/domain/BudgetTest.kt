@@ -51,12 +51,12 @@ class BudgetTest {
         assertEquals(listOf(333L, 333L, 334L), amounts)
     }
 
-    @Test fun calendarKeepsNegativeBalanceAndHandlesLastDay() {
+    @Test fun calendarStopsAllocatingUsefulMoneyWhenItIsExhausted() {
         val today = LocalDate.of(2026, 6, 1)
         val window = Window(today, today.plusDays(2))
         val spending = listOf(Spending(today, 1200))
-        assertEquals(-200L, BudgetCalculator.calendarAllowance(1000, window, today, today.plusDays(1), spending))
-        assertEquals(-200L, BudgetCalculator.calendarAllowance(1000, window, today.plusDays(1), today.plusDays(1), spending))
+        assertEquals(0L, BudgetCalculator.calendarAllowance(1000, window, today, today.plusDays(1), spending))
+        assertEquals(0L, BudgetCalculator.calendarAllowance(1000, window, today.plusDays(1), today.plusDays(1), spending))
     }
 
     @Test fun weekendMovesToMonday() {
@@ -100,6 +100,44 @@ class BudgetTest {
         assertEquals(-700L, result.today)
         assertEquals(-200L, result.remaining)
     }
+    @Test fun savingsAreConsumedOnlyAfterUsefulMoney() {
+        val belowBudget = SavingsCalculator.calculate(60000, 20000, 55000)
+        assertEquals(5000L, belowBudget.usefulRemaining)
+        assertEquals(20000L, belowBudget.savingRemaining)
+        assertEquals(25000L, belowBudget.saved)
+        assertEquals(5000L, belowBudget.differenceFromTarget)
+
+        val aboveBudget = SavingsCalculator.calculate(60000, 20000, 65000)
+        assertEquals(0L, aboveBudget.usefulRemaining)
+        assertEquals(15000L, aboveBudget.savingRemaining)
+        assertEquals(5000L, aboveBudget.savingConsumed)
+        assertEquals(15000L, aboveBudget.saved)
+        assertEquals(-5000L, aboveBudget.differenceFromTarget)
+    }
+
+    @Test fun exhaustedSavingsShowDeficitWithoutNegativeDeposit() {
+        val exhausted = SavingsCalculator.calculate(60000, 20000, 80000)
+        assertEquals(0L, exhausted.saved)
+        assertEquals(0L, exhausted.deficit)
+        val deficit = SavingsCalculator.calculate(60000, 20000, 85000)
+        assertEquals(0L, deficit.savingRemaining)
+        assertEquals(20000L, deficit.savingConsumed)
+        assertEquals(0L, deficit.saved)
+        assertEquals(5000L, deficit.deficit)
+        assertEquals(-25000L, deficit.differenceFromTarget)
+    }
+
+    @Test fun tomorrowUsesRemainingUsefulMoneyAfterEveryExpense() {
+        val start = LocalDate.of(2026, 6, 1)
+        val window = Window(start, start.plusDays(5))
+        for ((spent, expected) in listOf(0L to 2500L, 1000L to 2250L,
+            3000L to 1750L, 11000L to 0L)) {
+            val expenses = listOf(Spending(start, spent))
+            assertEquals(expected, BudgetCalculator.calculate(10000, window, start, expenses).tomorrow)
+            assertEquals(expected, BudgetCalculator.calculate(10000, window, start.plusDays(1), expenses).today)
+        }
+    }
+
     @Test fun moneyAndPercentageAreExact() {
         assertEquals(12345L, Money.parse("123,45"))
         assertNull(Money.parse("1.234"))

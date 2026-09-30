@@ -24,6 +24,26 @@ data class Window(val start: LocalDate, val end: LocalDate)
 data class Spending(val date: LocalDate, val cents: Long)
 data class Budget(val remaining: Long, val today: Long, val week: Long, val days: Long, val tomorrow: Long)
 
+/** The target stays fixed; actual savings depend on the cycle's spending. */
+data class CycleBalance(val usefulRemaining: Long, val savingRemaining: Long,
+                        val savingConsumed: Long, val saved: Long, val deficit: Long,
+                        val differenceFromTarget: Long)
+
+object SavingsCalculator {
+    fun calculate(initial: Long, target: Long, spent: Long): CycleBalance {
+        val useful = initial - spent
+        val balance = target + useful
+        return CycleBalance(
+            usefulRemaining = useful.coerceAtLeast(0),
+            savingRemaining = balance.coerceIn(0, target),
+            savingConsumed = (-useful).coerceIn(0, target),
+            saved = balance.coerceAtLeast(0),
+            deficit = (-balance).coerceAtLeast(0),
+            differenceFromTarget = balance - target
+        )
+    }
+}
+
 object BudgetCalculator {
     /** Past days show their closing allowance; future days assume the projected allowance is spent. */
     fun calendarAllowance(initial: Long, window: Window, today: LocalDate, date: LocalDate,
@@ -32,7 +52,7 @@ object BudgetCalculator {
         if (date <= today) return calculate(initial, window, date, expenses).today
         val first = maxOf(window.start, today.plusDays(1))
         val spent = expenses.filter { it.date >= window.start && it.date <= today && it.date < window.end }.sumOf { it.cents }
-        val remaining = initial - spent
+        val remaining = (initial - spent).coerceAtLeast(0)
         val days = ChronoUnit.DAYS.between(first, window.end)
         val index = ChronoUnit.DAYS.between(first, date)
         // Keep cents exact, assigning any remainder to the final days of the cycle.
@@ -62,11 +82,11 @@ object BudgetCalculator {
         val spentToday = valid.filter { it.date == today }.sumOf { it.cents }
         val days = ChronoUnit.DAYS.between(today, window.end)
         val opening = initial - prior
-        val daily = Math.floorDiv(opening, days)
+        val daily = Math.floorDiv(opening.coerceAtLeast(0), days)
         val remaining = opening - spentToday
         val daysUntilSunday = minOf(days, (8 - today.dayOfWeek.value).toLong())
         return Budget(remaining, daily - spentToday,
-            Math.floorDiv(opening * daysUntilSunday, days) - spentToday, days,
-            if (days > 1) Math.floorDiv(remaining, days - 1) else 0)
+            Math.floorDiv(opening.coerceAtLeast(0) * daysUntilSunday, days) - spentToday, days,
+            if (days > 1) Math.floorDiv(remaining.coerceAtLeast(0), days - 1) else 0)
     }
 }
