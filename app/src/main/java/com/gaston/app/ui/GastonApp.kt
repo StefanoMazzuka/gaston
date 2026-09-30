@@ -380,16 +380,12 @@ private fun TreasuryScreen(bags: List<BagData>, today: LocalDate) {
                 }
             }
         }
-        OutlinedButton(onClick = { showSavingsInfo = true }, modifier = Modifier.fillMaxWidth()) {
-            Text("ⓘ Cómo funciona el cofre de ahorro")
-        }
         Text("Ahorro por saco", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         if (bags.isEmpty()) {
             Text("Crea un saco para empezar a llenar tu cofre.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         bags.forEach { data ->
             val savedCycles = data.cycles.filter { it.end <= todayText }.sortedByDescending { it.end }
-            val total = data.treasury(today)
             val currentCycle = data.cycles.find { todayText >= it.start && todayText < it.end }
             val currentSaving = currentCycle?.let { data.balance(it, today).savingRemaining } ?: 0L
             OutlinedCard(
@@ -402,11 +398,9 @@ private fun TreasuryScreen(bags: List<BagData>, today: LocalDate) {
                         contentScale = ContentScale.Fit, modifier = Modifier.size(44.dp).padding(end = 8.dp))
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                         Text(data.bag.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        Text("Ahorro restante del ciclo · ${euros(currentSaving)}", style = MaterialTheme.typography.bodySmall,
+                        Text("Ahorro estimado · ${euros(currentSaving)}", style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    Text(euros(total), style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                 }
             }
             if (savedCycles.isEmpty()) Text("El primer depósito llegará al cerrar tu ciclo.",
@@ -444,7 +438,7 @@ private fun CreatorCredit() {
     }
     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
         TextButton(onClick = { uriHandler.openUri("https://github.com/StefanoMazzuka/gaston") }) {
-            Text("Hecho por Stefano Mazzuka · GitHub", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Stefano Mazzuka · GitHub", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Text("Versión $versionName", style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -473,6 +467,7 @@ private fun BagScreen(data: BagData, today: LocalDate, busy: Boolean, back: () -
     BackHandler(enabled = busy) { }
     val context = LocalContext.current
     var spending by rememberSaveable { mutableStateOf(false) }
+    var scannedAmount by rememberSaveable { mutableStateOf<Long?>(null) }
     var showBagInfo by rememberSaveable { mutableStateOf(false) }
     var editingExpenseId by rememberSaveable { mutableStateOf<String?>(null) }
     var deleting by remember { mutableStateOf<Expense?>(null) }
@@ -484,7 +479,6 @@ private fun BagScreen(data: BagData, today: LocalDate, busy: Boolean, back: () -
             val initial = cycle?.initial ?: 0L
             val remaining = budget?.remaining ?: 0L
             val progress = cycleProgress(remaining, initial)
-            val percent = if (initial > 0 && remaining > 0) ((remaining.toDouble() / initial.toDouble()) * 100).toInt() else 0
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -509,13 +503,8 @@ private fun BagScreen(data: BagData, today: LocalDate, busy: Boolean, back: () -
                 trackColor = MaterialTheme.colorScheme.outlineVariant,
                 drawStopIndicator = {}
             )
-            Text("${maxOf(0, percent)}% de tu tesoro del ciclo", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            
-            Text("Dinero útil restante · ${euros((budget?.remaining ?: 0).coerceAtLeast(0))}")
-            if ((budget?.days ?: 0) > 1) Text("Desde mañana · ${euros(budget?.tomorrow ?: 0)} al día si hoy no gastas más")
-            Text("Hasta el domingo · ${euros(budget?.week ?: 0)}")
+            Text("Disponible · ${euros(remaining.coerceAtLeast(0))}",
+                style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
             Text("Fin del ciclo · ${cycle?.end ?: "…"} · ${budget?.days ?: 0} días restantes", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if ((budget?.today ?: 0) < 0) Text(
@@ -523,7 +512,14 @@ private fun BagScreen(data: BagData, today: LocalDate, busy: Boolean, back: () -
             else "Has superado el margen de hoy. Este gasto se reflejará en el ahorro al cerrar el ciclo.",
             color = MaterialTheme.colorScheme.error)
 
-        Button(onClick = { spending = true }, enabled = !busy && cycle != null, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp), shape = RoundedCornerShape(16.dp)) { Text("🪙 Registrar gasto") }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = { scannedAmount = null; spending = true }, enabled = !busy && cycle != null,
+                modifier = Modifier.weight(1f).heightIn(min = 52.dp), shape = RoundedCornerShape(16.dp)) { Text("🪙 Registrar gasto") }
+            ReceiptCamera(enabled = !busy && cycle != null && !spending) { amount ->
+                scannedAmount = amount
+                spending = true
+            }
+        }
         OutlinedButton(onClick = calendar, modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp), shape = RoundedCornerShape(16.dp)) { Text("📅 Calendario e historial") }
         Text("🧾 Tus últimos gastos", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         if (data.expenses.isEmpty()) Text("Aún no hay gastos. ¡Tu tesoro sigue intacto!", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -592,7 +588,7 @@ private fun BagScreen(data: BagData, today: LocalDate, busy: Boolean, back: () -
         confirmButton = { TextButton(onClick = { showBagInfo = false }) { Text("Cerrar") } }
     )
 
-    if (spending) ExpenseDialog(busy, { spending = false }) { name, icon, amount ->
+    if (spending) ExpenseDialog(busy, { spending = false }, initialAmount = scannedAmount) { name, icon, amount ->
         vm.spend(data.bag.id, name, icon, amount) {
             spending = false
             playUiSound(context, R.raw.expense_added)
@@ -690,9 +686,9 @@ private fun IconPicker(selected: String, change: (String) -> Unit) {
     }
 }
 @Composable
-private fun ExpenseDialog(busy: Boolean, dismiss: () -> Unit, existing: Expense? = null, save: (String, String, Long) -> Unit) {
-    var name by rememberSaveable(existing?.id) { mutableStateOf(existing?.name.orEmpty()) }
-    var amount by rememberSaveable(existing?.id) { mutableStateOf(existing?.cents?.let { java.math.BigDecimal.valueOf(it, 2).toPlainString() }.orEmpty()) }
+private fun ExpenseDialog(busy: Boolean, dismiss: () -> Unit, existing: Expense? = null, initialAmount: Long? = null, save: (String, String, Long) -> Unit) {
+    var name by rememberSaveable(existing?.id) { mutableStateOf(existing?.name ?: "Otros") }
+    var amount by rememberSaveable(existing?.id) { mutableStateOf((existing?.cents ?: initialAmount)?.let { java.math.BigDecimal.valueOf(it, 2).toPlainString() }.orEmpty()) }
     var icon by rememberSaveable(existing?.id) { mutableStateOf(existing?.icon?.ifBlank { "❓" } ?: "❓") }
     var showSuggestions by rememberSaveable(existing?.id) { mutableStateOf(false) }
     val matchingSuggestions = expenseCategories.filter {
@@ -701,6 +697,7 @@ private fun ExpenseDialog(busy: Boolean, dismiss: () -> Unit, existing: Expense?
     val cents = Money.parse(amount)
     AlertDialog(onDismissRequest = { if (!busy) dismiss() }, title = { Text(if (existing == null) "Registrar gasto" else "Editar gasto") }, text = {
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (initialAmount != null) Text("Revisa el importe leído del ticket antes de guardar.", style = MaterialTheme.typography.bodySmall)
             AmountField(amount, { amount = it }, "Importe (€)")
             OutlinedTextField(name, { name = it; showSuggestions = true }, label = { Text("¿En qué lo has gastado?") }, singleLine = true)
             if (showSuggestions && matchingSuggestions.isNotEmpty()) {
