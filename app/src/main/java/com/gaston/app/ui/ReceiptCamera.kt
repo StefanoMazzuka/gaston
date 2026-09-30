@@ -32,12 +32,13 @@ import kotlin.coroutines.resumeWithException
 fun ReceiptCamera(enabled: Boolean, onAmount: (Long) -> Unit) {
     val context = LocalContext.current
     var photoPath by rememberSaveable { mutableStateOf<String?>(null) }
+    var selecting by rememberSaveable { mutableStateOf(false) }
     var reading by rememberSaveable { mutableStateOf(false) }
     var recognizedText by rememberSaveable { mutableStateOf<String?>(null) }
     var error by rememberSaveable { mutableStateOf<String?>(null) }
     val deliverAmount by rememberUpdatedState(onAmount)
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
-        if (success) reading = true
+        if (success) selecting = true
         else {
             photoPath?.let { File(it).delete() }
             photoPath = null
@@ -96,6 +97,17 @@ fun ReceiptCamera(enabled: Boolean, onAmount: (Long) -> Unit) {
         }
     }, modifier = Modifier.heightIn(min = 52.dp).semantics { contentDescription = "Fotografiar ticket" }) {
         Text(if (reading) "Leyendo…" else "📷")
+    }
+    if (selecting) photoPath?.let { original ->
+        ReceiptCrop(original,
+            cancel = { File(original).delete(); photoPath = null; selecting = false },
+            whole = { selecting = false; reading = true },
+            cropped = { croppedPath ->
+                photoPath = croppedPath
+                File(original).delete()
+                selecting = false
+                reading = true
+            })
     }
     if (reading) AlertDialog(onDismissRequest = {}, title = { Text("Leyendo ticket…") },
         text = { LinearProgressIndicator(Modifier.fillMaxWidth()) }, confirmButton = {})
