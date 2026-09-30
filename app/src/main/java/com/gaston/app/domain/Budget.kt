@@ -14,8 +14,8 @@ object Money {
         else value.movePointRight(2).longValueExact()
     } catch (_: Exception) { null }
 
-    fun saving(income: Long, value: Long, percent: Boolean): Long =
-        if (percent) BigDecimal(income).multiply(BigDecimal(value))
+    fun saving(income: Long, value: Long, percent: Boolean, fixedCosts: Long = 0): Long =
+        if (percent) BigDecimal((income - fixedCosts).coerceAtLeast(0)).multiply(BigDecimal(value))
             .divide(BigDecimal(10000), 0, RoundingMode.HALF_UP).longValueExact()
         else value
 }

@@ -12,7 +12,7 @@ class BagRepository(private val db: GastonDatabase) {
         require(name.isNotBlank() && income > 0 && day in 1..31)
         require(saving >= 0 && (!percent || saving <= 10000))
         require(costs.all { it.cents > 0 && it.name.isNotBlank() })
-        require(income - Money.saving(income, saving, percent) - costs.sumOf { it.cents } >= 0)
+        require(income - Money.saving(income, saving, percent, costs.sumOf { it.cents }) - costs.sumOf { it.cents } >= 0)
         require(opening == null || opening >= 0)
         // Close any elapsed cycles using the original settings before editing.
         refresh(today)
@@ -34,7 +34,7 @@ class BagRepository(private val db: GastonDatabase) {
         require(name.isNotBlank() && income > 0 && day in 1..31)
         require(saving >= 0 && (!percent || saving <= 10000))
         require(costs.all { it.cents > 0 && it.name.isNotBlank() })
-        val reserved = Money.saving(income, saving, percent)
+        val reserved = Money.saving(income, saving, percent, costs.sumOf { it.cents })
         val initial = income - reserved - costs.sumOf { it.cents }
         require(initial >= 0 && (opening == null || opening >= 0))
         val id = UUID.randomUUID().toString()
@@ -50,7 +50,7 @@ class BagRepository(private val db: GastonDatabase) {
         for (data in db.bags().all()) {
             val bag = data.bag
             var end = data.cycles.maxOfOrNull { LocalDate.parse(it.end) } ?: continue
-            val saving = Money.saving(bag.income, bag.savingValue, bag.savingPercent)
+            val saving = Money.saving(bag.income, bag.savingValue, bag.savingPercent, data.costs.sumOf { it.cents })
             val initial = bag.income - saving - data.costs.sumOf { it.cents }
             while (end <= today) {
                 val next = BudgetCalculator.window(end, bag.payday).end

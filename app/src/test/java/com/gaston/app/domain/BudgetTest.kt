@@ -138,6 +138,14 @@ class BudgetTest {
         }
     }
 
+    @Test fun percentageSavingUsesIncomeAfterAllFixedCosts() {
+        assertEquals(15000L, Money.saving(200000, 1000, true, 50000))
+        assertEquals(25000L, Money.saving(200000, 25000, false, 50000))
+        assertEquals(0L, Money.saving(50000, 1000, true, 50000))
+        assertEquals(0L, Money.saving(50000, 1000, true, 60000))
+        assertEquals(1001L, Money.saving(15005, 1000, true, 5000))
+    }
+
     @Test fun moneyAndPercentageAreExact() {
         assertEquals(12345L, Money.parse("123,45"))
         assertNull(Money.parse("1.234"))

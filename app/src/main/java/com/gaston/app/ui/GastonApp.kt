@@ -544,7 +544,7 @@ private fun BagScreen(data: BagData, today: LocalDate, busy: Boolean, back: () -
             Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 val cycleSaving = cycle?.saving ?: 0L
-                val templateSaving = Money.saving(data.bag.income, data.bag.savingValue, data.bag.savingPercent)
+                val templateSaving = Money.saving(data.bag.income, data.bag.savingValue, data.bag.savingPercent, data.costs.sumOf { it.cents })
                 val hasPendingChange = cycleSaving != templateSaving
 
                 Text("🌱 Plan de ahorro", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
@@ -560,7 +560,7 @@ private fun BagScreen(data: BagData, today: LocalDate, busy: Boolean, back: () -
                     CalculationText("Si no gastas más, al cerrar irán ${euros(balance.saved)} al cofre.", cycleMath(data, cycle, today),
                         style = MaterialTheme.typography.bodySmall)
                 }
-                if (hasPendingChange) CalculationText("Próximo ciclo · ${euros(templateSaving)}", "Ingreso ${euros(data.bag.income)}; ahorro configurado: ${if (data.bag.savingPercent) java.math.BigDecimal.valueOf(data.bag.savingValue, 2).toPlainString() + " %" else euros(data.bag.savingValue)} = ${euros(templateSaving)}.", style = MaterialTheme.typography.bodyMedium,
+                if (hasPendingChange) CalculationText("Próximo ciclo · ${euros(templateSaving)}", "Ingreso ${euros(data.bag.income)} − gastos fijos ${euros(data.costs.sumOf { it.cents })} = base ${euros((data.bag.income - data.costs.sumOf { it.cents }).coerceAtLeast(0))}; ahorro configurado: ${if (data.bag.savingPercent) java.math.BigDecimal.valueOf(data.bag.savingValue, 2).toPlainString() + " %" else euros(data.bag.savingValue)} = ${euros(templateSaving)}.", style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.secondary)
                 if (hasPendingChange) {
                     Text("Has editado el saco. El nuevo ahorro entrará en vigor el ${cycle?.end ?: "próximo ciclo"}.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -748,11 +748,11 @@ private fun CreateBag(
     val inc = Money.parse(income)
     val sav = Money.parse(saving)
     val payday = day.toIntOrNull()
-    val available = if (inc != null && sav != null && (!percent || sav <= 10000)) inc - Money.saving(inc, sav, percent) - costs.sumOf { it.cents } else null
+    val available = if (inc != null && sav != null && (!percent || sav <= 10000)) inc - Money.saving(inc, sav, percent, costs.sumOf { it.cents }) - costs.sumOf { it.cents } else null
     val currentBalance = Money.parse(accountBalance)
     val pendingCosts = costs.filter { it.id !in paidCostIds }.sumOf { it.cents }
     val firstAvailable = if (currentBalance != null && inc != null && sav != null && (!percent || sav <= 10000))
-        currentBalance - pendingCosts - Money.saving(inc, sav, percent) else null
+        currentBalance - pendingCosts - Money.saving(inc, sav, percent, costs.sumOf { it.cents }) else null
     val restoredCosts = Money.parse(legacyReservedCosts)
     val restoringOpening = existing != null && activeCycle?.accountOpening == null && (accountBalance.isNotBlank() || legacyReservedCosts.isNotBlank())
     val openingValid = if (existing == null) firstAvailable != null && firstAvailable >= 0
@@ -810,12 +810,15 @@ private fun CreateBag(
         }, enabled = !busy && costName.isNotBlank() && (Money.parse(costAmount) ?: 0) > 0) { Text(if (editingCostId == null) "Añadir salida" else "Guardar salida") }
         if (editingCostId != null) TextButton(enabled = !busy, onClick = { editingCostId = null; costName = ""; costAmount = "" }) { Text("Cancelar edición de salida") }
         Text("🌱 Ahorro primero", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        Row(verticalAlignment = Alignment.CenterVertically) { Switch(percent, { percent = it }); Text(if (percent) "Porcentaje del ingreso" else "Cantidad fija", Modifier.padding(start = 12.dp)) }
+        Row(verticalAlignment = Alignment.CenterVertically) { Switch(percent, { percent = it }); Text(if (percent) "Porcentaje tras gastos fijos" else "Cantidad fija", Modifier.padding(start = 12.dp)) }
         AmountField(saving, { saving = it }, if (percent) "Ahorro (%)" else "Ahorro (€)")
-        CalculationText("🪙 Disponible mensual: ${available?.let { euros(it) } ?: "—"}", "Ingreso ${inc?.let { euros(it) } ?: "—"} − pagos fijos ${euros(costs.sumOf { it.cents })} − ahorro ${if (inc != null && sav != null) euros(Money.saving(inc, sav, percent)) else "—"} = ${available?.let { euros(it) } ?: "—"}.", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+        if (percent && inc != null && sav != null && sav <= 10000) CalculationText(
+            "Ahorro estimado · ${euros(Money.saving(inc, sav, true, costs.sumOf { it.cents }))}",
+            "(${euros(inc)} − todos los gastos fijos ${euros(costs.sumOf { it.cents })}) × ${java.math.BigDecimal.valueOf(sav, 2).toPlainString()} % = ${euros(Money.saving(inc, sav, true, costs.sumOf { it.cents }))}. Se redondea al céntimo. En el primer ciclo también se incluyen los gastos fijos ya cobrados para calcular esta base.")
+        CalculationText("🪙 Disponible mensual: ${available?.let { euros(it) } ?: "—"}", "Ingreso ${inc?.let { euros(it) } ?: "—"} − pagos fijos ${euros(costs.sumOf { it.cents })} − ahorro ${if (inc != null && sav != null) euros(Money.saving(inc, sav, percent, costs.sumOf { it.cents })) else "—"} = ${available?.let { euros(it) } ?: "—"}.", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
         if (existing == null) {
             CalculationText("Pagos pendientes · ${euros(pendingCosts)}", costs.joinToString("\n") { "${it.name}: ${euros(it.cents)} · ${if (it.id in paidCostIds) "ya cobrado, no se resta" else "pendiente"}" } + "\nTotal pendiente: ${euros(pendingCosts)}", style = MaterialTheme.typography.bodyMedium)
-            CalculationText("Disponible hasta el próximo cobro · ${firstAvailable?.let { euros(it) } ?: "—"}", "Saldo inicial ${currentBalance?.let { euros(it) } ?: "—"} − pendientes ${euros(pendingCosts)} − ahorro ${if (inc != null && sav != null) euros(Money.saving(inc, sav, percent)) else "—"} = ${firstAvailable?.let { euros(it) } ?: "—"}.",
+            CalculationText("Disponible hasta el próximo cobro · ${firstAvailable?.let { euros(it) } ?: "—"}", "Saldo inicial ${currentBalance?.let { euros(it) } ?: "—"} − pendientes ${euros(pendingCosts)} − ahorro ${if (inc != null && sav != null) euros(Money.saving(inc, sav, percent, costs.sumOf { it.cents })) else "—"} = ${firstAvailable?.let { euros(it) } ?: "—"}.",
                 style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Text("Saldo actual menos pagos pendientes y ahorro. El ingreso mensual se aplicará en el próximo ciclo, reservando entonces todos los pagos fijos.", style = MaterialTheme.typography.bodySmall)
             if (firstAvailable != null && firstAvailable < 0) Text("El saldo actual no cubre los pagos pendientes y el ahorro. Revisa los importes o los pagos ya cobrados.", color = MaterialTheme.colorScheme.error)
