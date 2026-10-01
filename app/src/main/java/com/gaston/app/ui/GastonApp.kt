@@ -495,13 +495,15 @@ private fun BagScreen(data: BagData, today: LocalDate, busy: Boolean, back: () -
     }
     Page(data.bag.name, { if (!busy) back() },
         onInfo = { showBagInfo = true }, infoDescription = "Información y plan de ahorro del saco") {
+        Text("Gaston el goblin", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         GastonStronghold(gastonFrame)
         Section {
-            Text("Gaston el goblin", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            Text("Gastado en este ciclo", style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(euros(cycleSpent), style = MaterialTheme.typography.headlineMedium,
-                color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("Saco de Gaston:", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(euros(cycleSpent), style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+            }
         }
         Section {
             val initial = cycle?.initial ?: 0L
