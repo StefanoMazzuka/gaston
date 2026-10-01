@@ -277,7 +277,7 @@ fun GastonApp(vm: GastonViewModel) {
                 }
                 composable("bag/{id}") { entry ->
                     val data = bags.find { it.bag.id == entry.arguments?.getString("id") }
-                    if (data != null) BagScreen(data, today, busy, backToMenu, { nav.navigate("calendar/${data.bag.id}") }, vm)
+                    if (data != null) BagScreen(data, today, busy, { nav.navigate("calendar/${data.bag.id}") }, vm)
                     else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
                 }
                 composable("treasury") { TreasuryScreen(bags, today, backToMenu) }
@@ -298,14 +298,21 @@ private fun Page(
     back: (() -> Unit)? = null,
     onInfo: (() -> Unit)? = null,
     infoDescription: String = "¿Cómo se calcula el presupuesto?",
+    compactTitle: Boolean = false,
     content: @Composable ColumnScope.() -> Unit
 ) {
     Column(Modifier.fillMaxSize().imePadding().verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         if (back != null) TextButton(onClick = back) { Text("← Volver", style = MaterialTheme.typography.labelMedium) }
         Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.primary) {
-            Row(Modifier.padding(start = 20.dp, top = 18.dp, end = 12.dp, bottom = 18.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.padding(
+                start = if (compactTitle) 16.dp else 20.dp,
+                top = if (compactTitle) 12.dp else 18.dp,
+                end = if (compactTitle) 8.dp else 12.dp,
+                bottom = if (compactTitle) 12.dp else 18.dp
+            ), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                    Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold,
+                    Text(title, style = if (compactTitle) MaterialTheme.typography.titleLarge else MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.ExtraBold,
                         color = MaterialTheme.colorScheme.onPrimary, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
                 if (onInfo != null) IconButton(onClick = onInfo) {
@@ -451,7 +458,7 @@ private fun SavingsInfoDialog(dismiss: () -> Unit) {
 }
 
 @Composable
-private fun BagScreen(data: BagData, today: LocalDate, busy: Boolean, back: () -> Unit, calendar: () -> Unit, vm: GastonViewModel) {
+private fun BagScreen(data: BagData, today: LocalDate, busy: Boolean, calendar: () -> Unit, vm: GastonViewModel) {
     BackHandler(enabled = busy) { }
     val context = LocalContext.current
     var spending by rememberSaveable { mutableStateOf(false) }
@@ -493,11 +500,11 @@ private fun BagScreen(data: BagData, today: LocalDate, busy: Boolean, back: () -
         val resource = context.resources.getIdentifier("coins_$coinLevel", "drawable", context.packageName)
         resource.takeIf { it != 0 } ?: R.drawable.coins_100
     }
-    Page("Gaston el Goblin", { if (!busy) back() },
-        onInfo = { showBagInfo = true }, infoDescription = "Información y plan de ahorro del saco") {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween) {
+    Page("Gaston el Goblin",
+        onInfo = { showBagInfo = true }, infoDescription = "Información y plan de ahorro del saco", compactTitle = true) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("Saco de Gaston:", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.width(6.dp))
             Text(euros(cycleSpent), style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
         }
