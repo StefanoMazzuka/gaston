@@ -493,10 +493,8 @@ private fun BagScreen(data: BagData, today: LocalDate, busy: Boolean, back: () -
         val resource = context.resources.getIdentifier("coins_$coinLevel", "drawable", context.packageName)
         resource.takeIf { it != 0 } ?: R.drawable.coins_100
     }
-    Page(data.bag.name, { if (!busy) back() },
+    Page("Gaston el Goblin", { if (!busy) back() },
         onInfo = { showBagInfo = true }, infoDescription = "Información y plan de ahorro del saco") {
-        Text("Gaston el goblin", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-        GastonStronghold(gastonFrame)
         Section {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween) {
@@ -505,6 +503,7 @@ private fun BagScreen(data: BagData, today: LocalDate, busy: Boolean, back: () -
                     color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
             }
         }
+                GastonStronghold(gastonFrame)
         Section {
             val initial = cycle?.initial ?: 0L
             val remaining = budget?.remaining ?: 0L
