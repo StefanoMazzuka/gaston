@@ -508,7 +508,7 @@ private fun BagScreen(data: BagData, today: LocalDate, busy: Boolean, back: () -
         if (gastonAnimation == 0) return@LaunchedEffect
         for (frame in 1..4) {
             gastonFrame = frame
-            delay(150)
+            delay(350)
         }
         gastonFrame = 0
     }
