@@ -2,6 +2,9 @@ package com.gaston.app.data
 
 import androidx.room.*
 import kotlinx.coroutines.flow.Flow
+import com.gaston.app.domain.CycleBalance
+import com.gaston.app.domain.SavingsCalculator
+import java.time.LocalDate
 
 @Entity(tableName = "bags")
 data class Bag(
@@ -16,7 +19,7 @@ data class Bag(
 @Entity(tableName = "fixed_costs", indices = [Index("bagId")], foreignKeys = [ForeignKey(entity = Bag::class, parentColumns = ["id"], childColumns = ["bagId"], onDelete = ForeignKey.CASCADE)])
 data class FixedCost(@PrimaryKey val id: String, val bagId: String, val name: String, val icon: String, val cents: Long)
 @Entity(tableName = "cycles", primaryKeys = ["bagId", "start"], foreignKeys = [ForeignKey(entity = Bag::class, parentColumns = ["id"], childColumns = ["bagId"], onDelete = ForeignKey.CASCADE)])
-data class Cycle(val bagId: String, val start: String, val end: String, val initial: Long, val saving: Long)
+data class Cycle(val bagId: String, val start: String, val end: String, val initial: Long, val saving: Long, val accountOpening: Long? = null, val reservedCosts: Long? = null)
 @Entity(tableName = "expenses", indices = [Index("bagId")], foreignKeys = [ForeignKey(entity = Bag::class, parentColumns = ["id"], childColumns = ["bagId"], onDelete = ForeignKey.CASCADE)])
 data class Expense(@PrimaryKey val id: String, val bagId: String, val date: String, val name: String, val icon: String, val cents: Long)
 
@@ -26,6 +29,16 @@ data class BagData(
     @Relation(parentColumn = "id", entityColumn = "bagId") val cycles: List<Cycle>,
     @Relation(parentColumn = "id", entityColumn = "bagId") val expenses: List<Expense>
 )
+/** Derived from recorded expenses so edits and undo also update closed cycles. */
+fun BagData.balance(cycle: Cycle, through: LocalDate): CycleBalance =
+    SavingsCalculator.calculate(cycle.initial, cycle.saving, expenses.filter {
+        it.date >= cycle.start && it.date < cycle.end && it.date <= through.toString()
+    }.sumOf { it.cents })
+
+fun BagData.treasury(today: LocalDate): Long = cycles
+    .filter { it.end <= today.toString() }
+    .sumOf { balance(it, today).saved }
+
 @Dao
 interface BagDao {
     @Transaction @Query("SELECT * FROM bags ORDER BY rowid") fun observe(): Flow<List<BagData>>
@@ -42,5 +55,14 @@ interface BagDao {
     suspend fun editExpense(id: String, name: String, icon: String, cents: Long): Int
     @Query("DELETE FROM expenses WHERE id = :id") suspend fun deleteExpense(id: String)
 }
-@Database(entities = [Bag::class, FixedCost::class, Cycle::class, Expense::class], version = 1, exportSchema = true)
+@Database(entities = [Bag::class, FixedCost::class, Cycle::class, Expense::class], version = 2, exportSchema = true)
 abstract class GastonDatabase : RoomDatabase() { abstract fun bags(): BagDao }
+
+val MIGRATION_1_2 = object : androidx.room.migration.Migration(1, 2) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE cycles ADD COLUMN accountOpening INTEGER")
+        db.execSQL("ALTER TABLE cycles ADD COLUMN reservedCosts INTEGER")
+    }
+}
+
+data class OpeningInput(val available: Long, val account: Long?, val costs: Long?)

@@ -8,11 +8,11 @@ import java.util.UUID
 class BagRepository(private val db: GastonDatabase) {
     val bags = db.bags().observe()
     suspend fun update(id: String, name: String, income: Long, day: Int, saving: Long,
-                       percent: Boolean, costs: List<FixedCost>, opening: Long? = null, today: LocalDate) = db.withTransaction {
+                       percent: Boolean, costs: List<FixedCost>, opening: Long? = null, today: LocalDate, details: OpeningInput? = null) = db.withTransaction {
         require(name.isNotBlank() && income > 0 && day in 1..31)
         require(saving >= 0 && (!percent || saving <= 10000))
         require(costs.all { it.cents > 0 && it.name.isNotBlank() })
-        require(income - Money.saving(income, saving, percent) - costs.sumOf { it.cents } >= 0)
+        require(income - Money.saving(income, saving, percent, costs.sumOf { it.cents }) - costs.sumOf { it.cents } >= 0)
         require(opening == null || opening >= 0)
         // Close any elapsed cycles using the original settings before editing.
         refresh(today)
@@ -24,17 +24,17 @@ class BagRepository(private val db: GastonDatabase) {
         if (opening != null) {
             val activeCycle = bagData.cycles.find { today.toString() >= it.start && today.toString() < it.end }
             if (activeCycle != null) {
-                db.bags().updateCycle(activeCycle.copy(initial = opening))
+                db.bags().updateCycle(activeCycle.copy(initial = opening, accountOpening = details?.account, reservedCosts = details?.costs))
             }
         }
     }
     suspend fun delete(id: String) = db.bags().deleteBag(id)
     suspend fun create(name: String, income: Long, day: Int, saving: Long, percent: Boolean,
-                       costs: List<FixedCost>, opening: Long?, today: LocalDate): String {
+                       costs: List<FixedCost>, opening: Long?, today: LocalDate, details: OpeningInput? = null): String {
         require(name.isNotBlank() && income > 0 && day in 1..31)
         require(saving >= 0 && (!percent || saving <= 10000))
         require(costs.all { it.cents > 0 && it.name.isNotBlank() })
-        val reserved = Money.saving(income, saving, percent)
+        val reserved = Money.saving(income, saving, percent, costs.sumOf { it.cents })
         val initial = income - reserved - costs.sumOf { it.cents }
         require(initial >= 0 && (opening == null || opening >= 0))
         val id = UUID.randomUUID().toString()
@@ -42,7 +42,7 @@ class BagRepository(private val db: GastonDatabase) {
         db.withTransaction {
             db.bags().insertBag(Bag(id, name.trim(), income, day, saving, percent, today.toString()))
             db.bags().insertCosts(costs.map { it.copy(bagId = id) })
-            db.bags().insertCycle(Cycle(id, today.toString(), window.end.toString(), opening ?: initial, reserved))
+            db.bags().insertCycle(Cycle(id, today.toString(), window.end.toString(), opening ?: initial, reserved, details?.account ?: if (opening == null) income else null, details?.costs ?: if (opening == null) costs.sumOf { it.cents } else null))
         }
         return id
     }
@@ -50,11 +50,11 @@ class BagRepository(private val db: GastonDatabase) {
         for (data in db.bags().all()) {
             val bag = data.bag
             var end = data.cycles.maxOfOrNull { LocalDate.parse(it.end) } ?: continue
-            val saving = Money.saving(bag.income, bag.savingValue, bag.savingPercent)
+            val saving = Money.saving(bag.income, bag.savingValue, bag.savingPercent, data.costs.sumOf { it.cents })
             val initial = bag.income - saving - data.costs.sumOf { it.cents }
             while (end <= today) {
                 val next = BudgetCalculator.window(end, bag.payday).end
-                db.bags().insertCycle(Cycle(bag.id, end.toString(), next.toString(), initial, saving))
+                db.bags().insertCycle(Cycle(bag.id, end.toString(), next.toString(), initial, saving, bag.income, data.costs.sumOf { it.cents }))
                 end = next
             }
         }
