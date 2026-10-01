@@ -1,6 +1,8 @@
 package com.gaston.app.ui
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.media.MediaPlayer
 import androidx.compose.foundation.BorderStroke
 import androidx.activity.compose.BackHandler
@@ -25,6 +27,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
 import com.gaston.app.R
 import androidx.compose.ui.graphics.Color
@@ -39,7 +44,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.compose.*
 import com.gaston.app.data.*
 import com.gaston.app.domain.*
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import java.text.NumberFormat
 import java.time.LocalDate
 import java.time.YearMonth
@@ -330,6 +337,54 @@ private fun currentBudget(data: BagData, today: LocalDate): Budget? {
         data.expenses.map { Spending(LocalDate.parse(it.date), it.cents) })
 }
 
+private suspend fun loadGastonFrame(context: Context, resourceId: Int): ImageBitmap = withContext(Dispatchers.IO) {
+    val options = BitmapFactory.Options().apply {
+        inSampleSize = 2
+        inScaled = false
+        inPreferredConfig = Bitmap.Config.ARGB_8888
+    }
+    val source = context.resources.openRawResource(resourceId).use {
+        requireNotNull(BitmapFactory.decodeStream(it, null, options))
+    }
+    val pixels = IntArray(source.width * source.height)
+    source.getPixels(pixels, 0, source.width, 0, 0, source.width, source.height)
+    pixels.indices.forEach { index ->
+        val pixel = pixels[index]
+        val red = android.graphics.Color.red(pixel)
+        val green = android.graphics.Color.green(pixel)
+        val blue = android.graphics.Color.blue(pixel)
+        if (red >= 245 && green >= 245 && blue <= 20) pixels[index] = android.graphics.Color.TRANSPARENT
+    }
+    val transparent = Bitmap.createBitmap(source.width, source.height, Bitmap.Config.ARGB_8888)
+    transparent.setPixels(pixels, 0, source.width, 0, 0, source.width, source.height)
+    source.recycle()
+    transparent.asImageBitmap()
+}
+
+@Composable
+private fun GastonStronghold(frame: Int) {
+    val context = LocalContext.current
+    val resources = listOf(R.drawable.gaston_0, R.drawable.gaston_1, R.drawable.gaston_2, R.drawable.gaston_3, R.drawable.gaston_4)
+    var image by remember { mutableStateOf<ImageBitmap?>(null) }
+    LaunchedEffect(frame) { image = loadGastonFrame(context, resources[frame]) }
+    Box(Modifier.fillMaxWidth().height(220.dp).clip(RoundedCornerShape(18.dp))) {
+        Image(
+            painterResource(R.drawable.stronghold),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize()
+        )
+        image?.let {
+            Image(
+                bitmap = it,
+                contentDescription = "Gaston, el goblin del saco",
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.align(Alignment.BottomCenter).fillMaxHeight(.98f).fillMaxWidth(.72f)
+            )
+        }
+    }
+}
+
 @Composable
 private fun TreasuryScreen(bags: List<BagData>, today: LocalDate, back: () -> Unit) {
     var showSavingsInfo by rememberSaveable { mutableStateOf(false) }
@@ -446,7 +501,17 @@ private fun BagScreen(data: BagData, today: LocalDate, busy: Boolean, back: () -
     var scannedAmount by rememberSaveable { mutableStateOf<Long?>(null) }
     var showBagInfo by rememberSaveable { mutableStateOf(false) }
     var editingExpenseId by rememberSaveable { mutableStateOf<String?>(null) }
+    var gastonFrame by remember { mutableIntStateOf(0) }
+    var gastonAnimation by remember { mutableIntStateOf(0) }
     var deleting by remember { mutableStateOf<Expense?>(null) }
+    LaunchedEffect(gastonAnimation) {
+        if (gastonAnimation == 0) return@LaunchedEffect
+        for (frame in 1..4) {
+            gastonFrame = frame
+            delay(150)
+        }
+        gastonFrame = 0
+    }
     val budget = currentBudget(data, today)
     val cycle = data.cycles.find { today.toString() >= it.start && today.toString() < it.end }
     // Recover today's opening allowance, keeping today's spending out of the denominator.
@@ -469,6 +534,7 @@ private fun BagScreen(data: BagData, today: LocalDate, busy: Boolean, back: () -
     }
     Page(data.bag.name, { if (!busy) back() },
         onInfo = { showBagInfo = true }, infoDescription = "Información y plan de ahorro del saco") {
+        GastonStronghold(gastonFrame)
         Section {
             val initial = cycle?.initial ?: 0L
             val remaining = budget?.remaining ?: 0L
@@ -585,6 +651,7 @@ private fun BagScreen(data: BagData, today: LocalDate, busy: Boolean, back: () -
     if (spending) ExpenseDialog(busy, { spending = false }, initialAmount = scannedAmount) { name, icon, amount ->
         vm.spend(data.bag.id, name, icon, amount) {
             spending = false
+            gastonAnimation++
             playUiSound(context, R.raw.expense_added)
         }
     }
