@@ -277,7 +277,7 @@ fun GastonApp(vm: GastonViewModel) {
                 }
                 composable("bag/{id}") { entry ->
                     val data = bags.find { it.bag.id == entry.arguments?.getString("id") }
-                    if (data != null) BagScreen(data, today, busy, { nav.navigate("calendar/${data.bag.id}") }, vm)
+                    if (data != null) BagScreen(data, today, busy, backToMenu, { nav.navigate("calendar/${data.bag.id}") }, vm)
                     else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
                 }
                 composable("treasury") { TreasuryScreen(bags, today, backToMenu) }
@@ -299,10 +299,11 @@ private fun Page(
     onInfo: (() -> Unit)? = null,
     infoDescription: String = "¿Cómo se calcula el presupuesto?",
     compactTitle: Boolean = false,
+    backInTitle: Boolean = false,
     content: @Composable ColumnScope.() -> Unit
 ) {
     Column(Modifier.fillMaxSize().imePadding().verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        if (back != null) TextButton(onClick = back) { Text("← Volver", style = MaterialTheme.typography.labelMedium) }
+        if (back != null && !backInTitle) TextButton(onClick = back) { Text("← Volver", style = MaterialTheme.typography.labelMedium) }
         Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.primary) {
             Row(Modifier.padding(
                 start = if (compactTitle) 16.dp else 20.dp,
@@ -310,6 +311,11 @@ private fun Page(
                 end = if (compactTitle) 8.dp else 12.dp,
                 bottom = if (compactTitle) 12.dp else 18.dp
             ), verticalAlignment = Alignment.CenterVertically) {
+                if (backInTitle && back != null) {
+                    IconButton(onClick = back, modifier = Modifier.semantics { contentDescription = "Volver a los sacos" }) {
+                        Text("←", style = MaterialTheme.typography.titleLarge)
+                    }
+                }
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                     Text(title, style = if (compactTitle) MaterialTheme.typography.titleLarge else MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.ExtraBold,
@@ -359,7 +365,9 @@ private fun TreasuryScreen(bags: List<BagData>, today: LocalDate, back: () -> Un
         "Tu cofre",
         back = back,
         onInfo = { showSavingsInfo = true },
-        infoDescription = "Cómo funciona la pestaña del cofre de ahorro"
+        infoDescription = "Cómo funciona la pestaña del cofre de ahorro",
+        compactTitle = true,
+        backInTitle = true
     ) {
         Section {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -458,7 +466,7 @@ private fun SavingsInfoDialog(dismiss: () -> Unit) {
 }
 
 @Composable
-private fun BagScreen(data: BagData, today: LocalDate, busy: Boolean, calendar: () -> Unit, vm: GastonViewModel) {
+private fun BagScreen(data: BagData, today: LocalDate, busy: Boolean, back: () -> Unit, calendar: () -> Unit, vm: GastonViewModel) {
     BackHandler(enabled = busy) { }
     val context = LocalContext.current
     var spending by rememberSaveable { mutableStateOf(false) }
@@ -501,7 +509,8 @@ private fun BagScreen(data: BagData, today: LocalDate, busy: Boolean, calendar: 
         resource.takeIf { it != 0 } ?: R.drawable.coins_100
     }
     Page("Gaston el Goblin",
-        onInfo = { showBagInfo = true }, infoDescription = "Información y plan de ahorro del saco", compactTitle = true) {
+        back = back, onInfo = { showBagInfo = true }, infoDescription = "Información y plan de ahorro del saco",
+        compactTitle = true, backInTitle = true) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("Saco de Gaston:", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
             Spacer(Modifier.width(6.dp))
